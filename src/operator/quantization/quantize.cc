@@ -18,40 +18,46 @@
  */
 
 /*!
- *  Copyright (c) 2017 by Contributors
- * \file dequantize.cc
+ * \file quantize.cc
  * \brief
  */
-#include "./dequantize-inl.h"
+#include "./quantize-inl.h"
+#if MXNET_USE_MKLDNN == 1
+#include "./mkldnn/mkldnn_quantize-inl.h"
+#endif
 
 namespace mxnet {
 namespace op {
-DMLC_REGISTER_PARAMETER(DequantizeParam);
+DMLC_REGISTER_PARAMETER(QuantizeParam);
 
-NNVM_REGISTER_OP(_contrib_dequantize)
-.describe(R"code(Dequantize the input tensor into a float tensor.
+NNVM_REGISTER_OP(_contrib_quantize)
+.describe(R"code(Quantize a input tensor from float to `out_type`,
+with user-specified `min_range` and `max_range`.
+
 [min_range, max_range] are scalar floats that spcify the range for
-the output data.
+the input data. Each value of the tensor will undergo the following:
 
-Each value of the tensor will undergo the following:
-
-`out[i] = min_range + (in[i] * (max_range - min_range) / range(INPUT_TYPE))`
+`out[i] = (in[i] - min_range) * range(OUTPUT_TYPE) / (max_range - min_range)`
 
 here `range(T) = numeric_limits<T>::max() - numeric_limits<T>::min()`
 )code" ADD_FILELINE)
-.set_attr_parser(ParamParser<DequantizeParam>)
+.set_attr_parser(ParamParser<QuantizeParam>)
 .set_num_inputs(3)
-.set_num_outputs(1)
-.set_attr<nnvm::FInferShape>("FInferShape", DequantizeShape)
-.set_attr<nnvm::FInferType>("FInferType", DequantizeType)
-.set_attr<FCompute>("FCompute<cpu>", DequantizeCompute<cpu>)
-.set_attr<nnvm::FGradient>("FGradient", ElemwiseGradUseNone{"_dequantize"})
-.add_argument("input", "NDArray-or-Symbol", "A ndarray/symbol of type `uint8`")
+.set_num_outputs(3)
+.set_attr<nnvm::FInferShape>("FInferShape", QuantizeShape)
+.set_attr<nnvm::FInferType>("FInferType", QuantizeType)
+#if MXNET_USE_MKLDNN == 1
+.set_attr<FCompute>("FCompute<cpu>", MKLQuantizeCompute)
+#else
+.set_attr<FCompute>("FCompute<cpu>", QuantizeCompute<cpu>)
+#endif
+.set_attr<nnvm::FGradient>("FGradient", ElemwiseGradUseNone{"_quantize"})
+.add_argument("input", "NDArray-or-Symbol", "A ndarray/symbol of type `float32`")
 .add_argument("min_range", "NDArray-or-Symbol", "The minimum scalar value "
   "possibly produced for the input")
 .add_argument("max_range", "NDArray-or-Symbol", "The maximum scalar value "
   "possibly produced for the input")
-.add_arguments(DequantizeParam::__FIELDS__());
+.add_arguments(QuantizeParam::__FIELDS__());
 
 }  // namespace op
 }  // namespace mxnet
