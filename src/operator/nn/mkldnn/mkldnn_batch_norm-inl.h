@@ -118,8 +118,8 @@ class MKLDNNBatchNormFwd {
                      const mxnet::NDArray         &output,
                      const mxnet::TBlob           &moving_mean,
                      const mxnet::TBlob           &moving_var,
-                     const mxnet::TBlob           &out_mean,
-                     const mxnet::TBlob           &out_var,
+                     const mxnet::TBlob           *out_mean,
+                     const mxnet::TBlob           *out_var,
                      const mxnet::TBlob           *gamma        = nullptr,
                      const mxnet::TBlob           *beta         = nullptr);
 
@@ -183,17 +183,32 @@ void MKLDNNBatchNormCompute(const OpContext &ctx, const BatchNormParam &param,
                             const std::vector<NDArray>   &aux_states) {
   TmpMemMgr::Get()->Init(ctx.requested[batchnorm::kTempSpace]);
   const NDArray &data  = in_data[batchnorm::kData];
+  CHECK(in_data[batchnorm::kGamma].IsDefault());
+  CHECK(in_data[batchnorm::kBeta].IsDefault());
   auto gamma           = in_data[batchnorm::kGamma].data();
   auto beta            = in_data[batchnorm::kBeta].data();
+  CHECK(aux_states[batchnorm::kMovingMean].IsDefault());
+  CHECK(aux_states[batchnorm::kMovingVar].IsDefault());
   auto moving_mean     = aux_states[batchnorm::kMovingMean].data();
   auto moving_var      = aux_states[batchnorm::kMovingVar].data();
   const NDArray &out   = out_data[batchnorm::kOut];
-  auto out_mean        = out_data[batchnorm::kMean].data();
-  auto out_var         = out_data[batchnorm::kVar].data();
+  CHECK(out_data[batchnorm::kMean].IsDefault());
+  CHECK(out_data[batchnorm::kVar].IsDefault());
+  TBlob out_mean, out_var;
+  TBlob *omean_ptr = nullptr;
+  TBlob *ovar_ptr = nullptr;
+  if (req[batchnorm::kMean] != kNullOp) {
+    out_mean        = out_data[batchnorm::kMean].data();
+    omean_ptr = &out_mean;
+  }
+  if (req[batchnorm::kVar] != kNullOp) {
+    out_var         = out_data[batchnorm::kVar].data();
+    ovar_ptr = &out_var;
+  }
 
   MKLDNNBatchNormFwd<DType> &fwd = GetBatchNormFwd<DType>(param, ctx.is_train, data);
   fwd.SetDataHandle(req, data, out, moving_mean, moving_var,
-                    out_mean, out_var, &gamma, &beta);
+                    omean_ptr, ovar_ptr, &gamma, &beta);
   fwd.Execute();
 }
 

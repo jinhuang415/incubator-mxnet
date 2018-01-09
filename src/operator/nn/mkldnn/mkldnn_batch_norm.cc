@@ -91,8 +91,8 @@ void MKLDNNBatchNormFwd<DType>::SetDataHandle(const std::vector<OpReqType> &req,
                                               const mxnet::NDArray         &output,
                                               const mxnet::TBlob           &moving_mean,
                                               const mxnet::TBlob           &moving_var,
-                                              const mxnet::TBlob           &out_mean,
-                                              const mxnet::TBlob           &out_var,
+                                              const mxnet::TBlob           *out_mean,
+                                              const mxnet::TBlob           *out_var,
                                               const mxnet::TBlob           *gamma,
                                               const mxnet::TBlob           *beta) {
     auto data_mem = data.GetMKLDNNData();
@@ -106,12 +106,16 @@ void MKLDNNBatchNormFwd<DType>::SetDataHandle(const std::vector<OpReqType> &req,
     }
 
     // mean and variance
-    this->_out_mean = out_mean.dptr<DType>();
-    this->_out_var  = out_var.dptr<DType>();
+    if (out_mean)
+      this->_out_mean = out_mean->dptr<DType>();
+    if (out_var)
+      this->_out_var  = out_var->dptr<DType>();
     if (!(this->_is_train)) {
       this->mean->set_data_handle(moving_mean.dptr<DType>());
       this->variance->set_data_handle(moving_var.dptr<DType>());
     } else {
+      CHECK(this->_out_mean != nullptr);
+      CHECK(this->_out_var != nullptr);
       this->mean->set_data_handle(this->_out_mean);
       this->variance->set_data_handle(this->_out_var);
     }
@@ -121,9 +125,10 @@ template <typename DType>
 void MKLDNNBatchNormFwd<DType>::Execute() {
     MKLDNNStream::Get()->RegisterPrim(*(this->fwd));
     MKLDNNStream::Get()->Submit();
-    _SetMeanVar(reinterpret_cast<DType*>(this->mean->get_data_handle()),
-                reinterpret_cast<DType*>(this->variance->get_data_handle()),
-                this->_out_mean, this->_out_var);
+    if (this->_out_mean || this->_out_var)
+      _SetMeanVar(reinterpret_cast<DType*>(this->mean->get_data_handle()),
+                  reinterpret_cast<DType*>(this->variance->get_data_handle()),
+                  this->_out_mean, this->_out_var);
 }
 
 template <typename DType>
@@ -165,8 +170,10 @@ void MKLDNNBatchNormFwd<DType>::_SetMeanVar(const DType *imean,
     float e = this->_eps;
 #pragma omp parallel for firstprivate(e)
     for (int i = 0; i < this->_channels; i++) {
-      omean[i] = imean[i];
-      ovar[i] = VARIANCE_TO_INVSTD(ivar[i], e);
+      if (omean)
+        omean[i] = imean[i];
+      if (ovar)
+        ovar[i] = VARIANCE_TO_INVSTD(ivar[i], e);
     }
 }
 
