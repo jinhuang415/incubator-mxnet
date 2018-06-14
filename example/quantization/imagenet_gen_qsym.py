@@ -54,8 +54,8 @@ def save_params(fname, arg_params, aux_params, logger=None):
 if __name__ == '__main__':
     parser = argparse.ArgumentParser(description='Generate a calibrated quantized model from a FP32 model')
     parser.add_argument('--ctx', type=str, default='gpu')
-    parser.add_argument('--model', type=str, choices=['imagenet1k-resnet-152', 'imagenet1k-inception-bn'],
-                        help='currently only supports imagenet1k-resnet-152 or imagenet1k-inception-bn')
+    parser.add_argument('--model', type=str, choices=['imagenet1k-resnet-152', 'imagenet1k-inception-bn', 'imagenet1k-vgg-16'],
+                        help='currently only supports imagenet1k-resnet-152, imagenet1k-inception-bn or imagenet1k-vgg-16')
     parser.add_argument('--batch-size', type=int, default=32)
     parser.add_argument('--label-name', type=str, default='softmax_label')
     parser.add_argument('--calib-dataset', type=str, default='data/val_256_q90.rec',
@@ -193,6 +193,16 @@ if __name__ == '__main__':
             excluded_sym_names += ['flatten', 'fc1']
         if exclude_first_conv:
             excluded_sym_names += ['conv_1']
+    elif args.model.find("vgg") != -1:
+        rgb_mean = '0,0,0'
+        if args.ctx == 'gpu':
+            calib_layer = lambda name: name.endswith('_output') and (name.find('conv') != -1
+                                                                     or name.find('fc') != -1)
+        else:
+            calib_layer = lambda name: name.endswith('_output') and (name.find('conv') != -1)
+            excluded_sym_names += ['flatten_0', 'fc6', 'fc7', 'fc8']
+        if exclude_first_conv:
+            excluded_sym_names += ['conv1_1', 'relu1_1']
     else:
         raise ValueError('model %s is not supported in this script' % args.model)
 
