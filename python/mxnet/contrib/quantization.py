@@ -40,7 +40,7 @@ from ..context import cpu, Context
 from ..module import Module
 
 
-def _quantize_params(qsym, params, th_in_dict):
+def _quantize_params(qsym, params, th_in_dict={}):
     """Given a quantized symbol and a dict of params that have not been quantized,
     generate quantized params. Currently only supports quantizing the arg_params
     with names of `weight` or `bias`, not aux_params. If `qsym` contains symbols
@@ -53,6 +53,7 @@ def _quantize_params(qsym, params, th_in_dict):
     qsym : Symbol
         Quantized symbol from FP32 symbol.
     params : dict of str->NDArray
+    th_in_dict : dict of threshold for input calibration
     """
     inputs_name = qsym.list_arguments()
     quantized_params = {}
