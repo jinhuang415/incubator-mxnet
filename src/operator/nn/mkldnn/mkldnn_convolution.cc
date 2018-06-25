@@ -58,17 +58,25 @@ mkldnn::convolution_forward::primitive_desc GetConvFwdImpl(
   mkldnn::memory::dims padding{0, 0};
   padding[0] = param.pad[0];
   padding[1] = param.pad[1];
-  primitive_attr attr;
+  mkldnn::primitive_attr attr;
   if (scale != MKLDNNConvForward::NO_SCALE) {
     int mask = 0;
     std::vector<float> scales = {scale};
     attr.set_output_scales(mask, scales);
     attr.set_int_output_round_mode(round_nearest);
   }
+  mkldnn::post_ops ops;
+  if (param.with_relu) {
+    float scale = 1.0f;            // for fp32, scale is 1.
+    float alpha = 0.0f;            // negative slope for mkldnn_eltwise_relu.
+    float beta = 1.0f;             // ignored for mkldnn_eltwise_relu.
+    ops.append_eltwise(scale, eltwise_relu, alpha, beta);
+    attr.set_post_ops(ops);
+  }
   if (param.dilate.ndim() == 0 && bias == nullptr) {
     mkldnn::convolution_forward::desc desc(prop, mkldnn::algorithm::convolution_direct,
         data_md, weight_md, out_md, strides, padding, padding, mkldnn::padding_kind::zero);
-    if (scale != MKLDNNConvForward::NO_SCALE) {
+    if (scale != MKLDNNConvForward::NO_SCALE || param.with_relu) {
       return mkldnn::convolution_forward::primitive_desc(desc, attr, engine);
     } else {
       return mkldnn::convolution_forward::primitive_desc(desc, engine);
@@ -78,7 +86,7 @@ mkldnn::convolution_forward::primitive_desc GetConvFwdImpl(
     mkldnn::convolution_forward::desc desc(prop, mkldnn::algorithm::convolution_direct,
         data_md, weight_md, bias_md, out_md, strides, padding, padding,
         mkldnn::padding_kind::zero);
-    if (scale != MKLDNNConvForward::NO_SCALE) {
+    if (scale != MKLDNNConvForward::NO_SCALE || param.with_relu) {
       return mkldnn::convolution_forward::primitive_desc(desc, attr, engine);
     } else {
       return mkldnn::convolution_forward::primitive_desc(desc, engine);
@@ -91,7 +99,7 @@ mkldnn::convolution_forward::primitive_desc GetConvFwdImpl(
       mkldnn::convolution_forward::desc desc(prop, mkldnn::algorithm::convolution_direct,
           data_md, weight_md, out_md, strides, dilates, padding, padding,
           mkldnn::padding_kind::zero);
-      if (scale != MKLDNNConvForward::NO_SCALE) {
+      if (scale != MKLDNNConvForward::NO_SCALE || param.with_relu) {
         return mkldnn::convolution_forward::primitive_desc(desc, attr, engine);
       } else {
         return mkldnn::convolution_forward::primitive_desc(desc, engine);
@@ -102,7 +110,7 @@ mkldnn::convolution_forward::primitive_desc GetConvFwdImpl(
                                              data_md, weight_md, bias_md, out_md, strides,
                                              dilates, padding, padding,
                                              mkldnn::padding_kind::zero);
-      if (scale != MKLDNNConvForward::NO_SCALE) {
+      if (scale != MKLDNNConvForward::NO_SCALE || param.with_relu) {
         return mkldnn::convolution_forward::primitive_desc(desc, attr, engine);
       } else {
         return mkldnn::convolution_forward::primitive_desc(desc, engine);

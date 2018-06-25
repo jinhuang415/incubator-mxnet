@@ -1423,6 +1423,9 @@ MXNET_DLL int MXSymbolInferType(SymbolHandle sym,
                                 const int **aux_type_data,
                                 int *complete);
 
+MXNET_DLL int MXFuseSymbol(SymbolHandle sym_handle,
+                           SymbolHandle *ret_sym_handle);
+    
 /*!
  * \brief Convert a symbol into a quantized symbol where FP32 operators are replaced with INT8
  * \param sym_handle symbol to be converted

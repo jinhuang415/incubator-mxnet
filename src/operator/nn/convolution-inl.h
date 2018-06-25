@@ -67,6 +67,7 @@ struct ConvolutionParam : public dmlc::Parameter<ConvolutionParam> {
   dmlc::optional<int> cudnn_tune;
   bool cudnn_off;
   dmlc::optional<int> layout;
+  bool with_relu;
   // below 3 params are optional parameters to support INT8 quantization
   dmlc::optional<int> out_type;  // quantized conv output type
   dmlc::optional<float> min_calib_range;  // min float value calculated from calibration dataset
@@ -108,7 +109,10 @@ struct ConvolutionParam : public dmlc::Parameter<ConvolutionParam> {
     .set_default(dmlc::optional<int>())
     .describe("Set layout for input, output and weight. Empty for\n    "
               "default layout: NCW for 1d, NCHW for 2d and NCDHW for 3d.");
+    DMLC_DECLARE_FIELD(with_relu).set_default(false)
+    .describe("Whether to apply relu after convlution.");
     DMLC_DECLARE_FIELD(out_type)
+    .add_enum("uint8", mshadow::kUint8)
     .add_enum("int8", mshadow::kInt8)
     .add_enum("int32", mshadow::kInt32)
     .set_default(dmlc::optional<int>())
@@ -140,6 +144,7 @@ struct ConvolutionParam : public dmlc::Parameter<ConvolutionParam> {
            this->no_bias == other.no_bias &&
            this->cudnn_tune == other.cudnn_tune &&
            this->cudnn_off == other.cudnn_off &&
+           this->with_relu == other.with_relu &&
            this->layout == other.layout;
   }
 };
@@ -166,7 +171,9 @@ struct hash<mxnet::op::ConvolutionParam> {
     ret = dmlc::HashCombine(ret, val.no_bias);
     ret = dmlc::HashCombine(ret, val.cudnn_tune);
     ret = dmlc::HashCombine(ret, val.cudnn_off);
+    ret = dmlc::HashCombine(ret, val.with_relu);
     ret = dmlc::HashCombine(ret, val.layout);
+    /* This need to add int8 other params hash as well ??? */
     return ret;
   }
 };
