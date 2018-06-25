@@ -39,6 +39,72 @@ from ..io import DataIter
 from ..context import cpu, Context
 from ..module import Module
 
+def _fuse_update_params(qsym, params, aux_params):
+    """Given a quantized symbol and a dict of params that have not been quantized, generate quantized params.
+    Currently only supports quantizing the arg_params with names of `weight` or `bias`, not aux_params.
+    If `qsym` contains symbols that are excluded from being quantized, their corresponding params will
+    not be quantized, but saved together with quantized params of the symbols that have been quantized.
+
+    Parameters
+    ----------
+    qsym : Symbol
+        Quantized symbol from FP32 symbol.
+    params : dict of str->NDArray
+    """
+    inputs_name = qsym.list_arguments()
+    fused_params = {}
+    for name in inputs_name:
+        if name.startswith('convBNReluPara_'):
+            print "para name is ",name            
+            original_name = name[len('convBNReluPara_'):]
+            print "original_name is ",original_name
+            if original_name.endswith('conv0_weight'):
+                bn_num = 'bn0'
+            elif original_name.endswith('conv1_weight'):
+              bn_num = 'bn2'
+            elif original_name.endswith('conv2_weight'):
+                bn_num = 'bn3'
+            stage_unit_name = original_name[:-len('convX_weight')]
+            bn_gamma_name = stage_unit_name + bn_num + '_gamma'
+            bn_beta_name = stage_unit_name + bn_num + '_beta'
+            bn_moving_mean_name = stage_unit_name + bn_num + '_moving_mean'
+            bn_moving_var_name = stage_unit_name + bn_num + '_moving_var'
+            bn_gamma = params[bn_gamma_name]
+            bn_beta = params[bn_beta_name]
+            bn_moving_mean = aux_params[bn_moving_mean_name]
+            bn_moving_var = aux_params[bn_moving_var_name]
+
+            conv_weight = params[original_name]
+            conv_bias_name = original_name[:-len('weight')] + 'bias'
+            print "conv_weight_name is ", name
+            print "conv_bias_name is ", conv_bias_name
+            if(params.has_key(conv_bias_name)):
+                conv_bias = params[conv_bias_name]
+            else:
+                conv_bias = ndarray.zeros_like(bn_gamma)
+#            print "conv_bias_type ", type(conv_bias[0]),conv_bias.shape,conv_bias
+ #           print type(conv_weight),len(conv_weight),conv_weight.shape,bn_gamma.shape,bn_beta.shape,bn_moving_mean.shape,bn_moving_var.shape
+            
+  #          print "bn para is ",bn_gamma_name,bn_beta_name,bn_moving_mean_name,bn_moving_var_name
+
+            conv_weight_after_bn = conv_weight
+            print type(bn_moving_var[0])," value is ", bn_moving_var[0]
+            for i in range (len(conv_weight)):
+                conv_weight_after_bn[i,:,:,:] = conv_weight[i,:,:,:]*bn_gamma[i]/NDArray.sqrt(bn_moving_var[i] + 2e-05)
+                conv_bias[i] = (conv_bias[i] - bn_moving_mean[i])*bn_gamma[i]/NDArray.sqrt(bn_moving_var[i] + 2e-05) + bn_beta[i]
+   #         print "save original_name is ",original_name   
+            fused_params[name] = conv_weight_after_bn;
+            fused_params[conv_bias_name] = conv_bias
+    #        print "bias shape is ",conv_bias.shape
+        elif name in params:
+            print "else name is ", name
+            fused_params[name] = params[name]
+#    for k, v in params.items():
+#         print "params key are ",k
+#    for k, v in aux_params.items():
+#         print "aux_params name is ",k 
+#         print "aux_params name is ",k ," val are ", v
+    return fused_params
 
 def _quantize_params(qsym, params, th_in_dict={}):
     """Given a quantized symbol and a dict of params that have not been quantized,
@@ -65,6 +131,7 @@ def _quantize_params(qsym, params, th_in_dict={}):
                                                        min_range=ndarray.min(param),
                                                        max_range=ndarray.max(param),
                                                        out_type='int8')
+            print("quantize param {}, min/max {}/{}".format(name, vmin, vmax))
             quantized_params[name] = val
             quantized_params[name+'_min'] = vmin
             quantized_params[name+'_max'] = vmax
@@ -76,6 +143,11 @@ def _quantize_params(qsym, params, th_in_dict={}):
         quantized_params[layer_name+'_max'] = ndarray.array([th_in_dict[name][1]])
     return quantized_params
 
+def _fuse_symbol(sym):
+    out = SymbolHandle()
+    check_call(_LIB.MXFuseSymbol(sym.handle,
+                                 ctypes.byref(out)))
+    return Symbol(out)
 
 def _quantize_symbol(sym, excluded_symbols=None, offline_params=None,
                      quantized_dtype='int8', disable_requantize=False,
@@ -479,6 +551,17 @@ def _load_params(params, logger=logging):
         raise ValueError('Unsupported params provided. Must be either a path to the param file or'
                          ' a pair of dictionaries representing arg_params and aux_params')
 
+def save_params(fname, arg_params, aux_params, logger=None):
+    if logger is not None:
+        logger.info('Saving params into file at %s' % fname)
+    save_dict = {('arg:%s' % k): v.as_in_context(cpu()) for k, v in arg_params.items()}
+    save_dict.update({('aux:%s' % k): v.as_in_context(cpu()) for k, v in aux_params.items()})
+    ndarray.save(fname, save_dict)
+
+def save_symbol(fname, sym, logger=None):
+    if logger is not None:
+        logger.info('Saving symbol into file at %s' % fname)
+    sym.save(fname)
 
 def quantize_model(sym, arg_params, aux_params,
                    data_names=('data',), label_names=('softmax_label',),
@@ -562,10 +645,17 @@ def quantize_model(sym, arg_params, aux_params,
         raise ValueError('excluded_sym_names must be a list of strings representing'
                          ' the names of the symbols that will not be quantized,'
                          ' while received type %s' % str(type(excluded_sym_names)))
+    fsym = _fuse_symbol(sym)
+    arg_params = _fuse_update_params(fsym, arg_params, aux_params)
+    #save_symbol("jin-debug.json", fsym, logger)
+    #save_params("jin-debug.params", arg_params, aux_params, logger)
+    #import sys
+    #sys.exit()
+
     excluded_syms = []
     if excluded_sym_names is not None:
         for sym_name in excluded_sym_names:
-            nodes = sym.get_internals()
+            nodes = fsym.get_internals()
             idx = nodes.list_outputs().index(sym_name + '_output')
             excluded_syms.append(nodes[idx])
     logger.info('Quantizing symbol')
@@ -574,7 +664,7 @@ def quantize_model(sym, arg_params, aux_params,
     if input_calib_layer is not None:
         # we strip '_output' from list_outputs() to get the layer name we want
         # to perform input calibration and pass to quantize graph logic
-        for output in sym.get_internals().list_outputs():
+        for output in fsym.get_internals().list_outputs():
             if (output.endswith('_output') and input_calib_layer is not None
                     and input_calib_layer(output.replace('_output', '_data'))):
                 input_calib_layers.append(output.replace('_output', ''))
@@ -582,11 +672,12 @@ def quantize_model(sym, arg_params, aux_params,
     if quantized_dtype != 'int8' and quantized_dtype != 'uint8':
         raise ValueError('unknown quantized_dtype %s received,'
                          ' expected `int8` or `uint8`' % quantized_dtype)
-    qsym = _quantize_symbol(sym, excluded_symbols=excluded_syms,
+    qsym = _quantize_symbol(fsym, excluded_symbols=excluded_syms,
                             offline_params=list(arg_params.keys()),
                             quantized_dtype=quantized_dtype,
                             disable_requantize=disable_requantize,
                             input_calib_layers=input_calib_layers)
+    
 
     if calib_mode is not None and calib_mode != 'none':
         if not isinstance(ctx, Context):
@@ -599,7 +690,7 @@ def quantize_model(sym, arg_params, aux_params,
         if calib_layer is None:
             calib_layer = lambda name: name.endswith('_output')
 
-        mod = Module(symbol=sym, data_names=data_names, label_names=label_names, context=ctx)
+        mod = Module(symbol=fsym, data_names=data_names, label_names=label_names, context=ctx)
         if len(calib_data.provide_label) > 0:
             mod.bind(for_training=False, data_shapes=calib_data.provide_data,
                      label_shapes=calib_data.provide_label)

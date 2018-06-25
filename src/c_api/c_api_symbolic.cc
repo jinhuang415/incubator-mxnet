@@ -614,6 +614,18 @@ int MXQuantizeSymbol(SymbolHandle sym_handle,
   API_END_HANDLE_ERROR(delete s);
 }
 
+int MXFuseSymbol(SymbolHandle sym_handle,
+                 SymbolHandle *ret_sym_handle) {
+  nnvm::Symbol *s = new nnvm::Symbol();
+  API_BEGIN();
+  nnvm::Symbol *sym = static_cast<nnvm::Symbol*>(sym_handle);
+  nnvm::Graph g = Symbol2Graph(*sym);
+  g = ApplyPass(std::move(g), "FuseGraph");
+  s->outputs = g.outputs;
+  *ret_sym_handle = s;
+  API_END_HANDLE_ERROR(delete s);
+}
+
 int MXSetCalibTableToQuantizedSymbol(SymbolHandle qsym_handle,
                                      const mx_uint num_layers,
                                      const char** layer_names,

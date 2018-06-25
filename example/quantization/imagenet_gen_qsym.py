@@ -54,7 +54,7 @@ def save_params(fname, arg_params, aux_params, logger=None):
 if __name__ == '__main__':
     parser = argparse.ArgumentParser(description='Generate a calibrated quantized model from a FP32 model')
     parser.add_argument('--ctx', type=str, default='gpu')
-    parser.add_argument('--model', type=str, choices=['imagenet1k-resnet-152', 'imagenet1k-inception-bn', 'imagenet1k-vgg-16'],
+    parser.add_argument('--model', type=str, choices=['imagenet1k-resnet-152', 'imagenet1k-resnet-50', 'imagenet1k-resnet-50-v1', 'imagenet1k-inception-bn', 'imagenet1k-vgg-16'],
                         help='currently only supports imagenet1k-resnet-152, imagenet1k-inception-bn or imagenet1k-vgg-16')
     parser.add_argument('--batch-size', type=int, default=32)
     parser.add_argument('--label-name', type=str, default='softmax_label')
@@ -140,9 +140,13 @@ if __name__ == '__main__':
     if calib_mode != 'none':
         download_calib_dataset('http://data.mxnet.io/data/val_256_q90.rec', args.calib_dataset)
 
-    # download model
-    prefix, epoch = download_model(model_name=args.model, logger=logger)
-    sym, arg_params, aux_params = mx.model.load_checkpoint(prefix, epoch)
+    if args.model == 'imagenet1k-resnet-50-v1':
+        prefix, epoch = "./model/imagenet1k-resnet-50-v1", 0
+        sym, arg_params, aux_params = mx.model.load_checkpoint("./model/imagenet1k-resnet-50-v1", 0)
+    else:
+        # download model
+        prefix, epoch = download_model(model_name=args.model, logger=logger)
+        sym, arg_params, aux_params = mx.model.load_checkpoint(prefix, epoch)
 
     # get batch size
     batch_size = args.batch_size
@@ -162,7 +166,7 @@ if __name__ == '__main__':
     exclude_first_conv = args.exclude_first_conv
     excluded_sym_names = []
     input_calib_layer = None
-    if args.model == 'imagenet1k-resnet-152':
+    if args.model.find("resnet") != -1:
         rgb_mean = '0,0,0'
         if args.ctx == 'gpu':
             calib_layer = lambda name: name.endswith('_output') and (name.find('conv') != -1
@@ -178,7 +182,7 @@ if __name__ == '__main__':
                                                    name.find('pool') != -1))
             excluded_sym_names += ['flatten0', 'fc1']
         if exclude_first_conv:
-            excluded_sym_names += ['conv0']
+            excluded_sym_names += ['conv0', 'pooling0']
     elif args.model == 'imagenet1k-inception-bn':
         rgb_mean = '123.68,116.779,103.939'
         if args.ctx == 'gpu':
@@ -200,9 +204,14 @@ if __name__ == '__main__':
                                                                      or name.find('fc') != -1)
         else:
             calib_layer = lambda name: name.endswith('_output') and (name.find('conv') != -1)
+            if args.enable_input_calib:
+                input_calib_layer = lambda name: (name.endswith('_data') and
+                                                  (name.find('conv') != -1 or
+                                                   name.find('pool') != -1))
             excluded_sym_names += ['flatten_0', 'fc6', 'fc7', 'fc8']
         if exclude_first_conv:
-            excluded_sym_names += ['conv1_1', 'relu1_1']
+            #excluded_sym_names += ['conv1_1', 'relu1_1']
+            excluded_sym_names += ['conv1_1']
     else:
         raise ValueError('model %s is not supported in this script' % args.model)
 
@@ -247,6 +256,7 @@ if __name__ == '__main__':
                                                         calib_layer=calib_layer, quantized_dtype=args.quantized_dtype,
                                                         disable_requantize=args.disable_requantize,
                                                         input_calib_layer=input_calib_layer,
+                                                        label_names=(label_name,),
                                                         logger=logger)
         if calib_mode == 'entropy':
             suffix = '-quantized-%dbatches-entropy' % num_calib_batches

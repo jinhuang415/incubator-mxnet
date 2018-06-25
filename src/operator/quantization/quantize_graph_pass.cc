@@ -194,8 +194,12 @@ Graph QuantizeGraph(Graph &&src) {
       if (need_requantize_map.count(new_node->op()) > 0
           && need_requantize_map[new_node->op()](new_node->attrs)) {
         if (disable_requantize) {
-          // Set quantized OP's out type to int8 if disable requantize
-          new_node->attrs.dict["out_type"] = "int8";
+          if (!new_node->attrs.dict.count("with_relu")) {
+            // Set quantized OP's out type to int8 if disable requantize
+            new_node->attrs.dict["out_type"] = "int8";
+          } else {
+            new_node->attrs.dict["out_type"] = "uint8";
+          }
         } else {
           NodePtr requantize_node = Node::Create();
           requantize_node->attrs.op = Op::Get("_contrib_requantize");
@@ -239,6 +243,9 @@ Graph QuantizeGraph(Graph &&src) {
 
           new_node->inputs.emplace_back(NodeEntry{dequantize_node, 0, 0});
           mirror_map[e.node.get()] = std::move(dequantize_node);
+        } else if (mirror_node->op() != nullptr
+                   && mirror_node->op()->name == "_contrib_quantize") {
+          new_node->inputs.emplace_back(NodeEntry{mirror_node->inputs[0].node, e.index, e.version});
         } else {
           new_node->inputs.emplace_back(NodeEntry{mirror_node, e.index, e.version});
         }
@@ -274,6 +281,125 @@ Graph QuantizeGraph(Graph &&src) {
   Graph ret;
   ret.outputs = std::move(outputs);
   return ret;
+}
+
+Graph GraphFusionConvRelu(Graph &src) {
+  std::unordered_map<Node*, NodePtr> mirror_map;
+  bool patten_match;
+  DFSVisit(src.outputs, [&](const NodePtr& node) {
+    // for one node, create a new node as mirror node, and then go through 
+    // the node's each input node, if the input node and current node doesn't
+    // form a fusion pattern, then add the input node's mirror node to this
+    // node's input, otherwise
+    NodePtr new_node = Node::Create();
+    *new_node = *node;
+    new_node->inputs.clear();
+    patten_match = false;
+    for (const auto& e : node->inputs) {
+      NodePtr mirror_node = mirror_map.at(e.node.get());
+      if (e.node->op() != nullptr && e.node->op()->name == "Convolution"
+             && node->op() != nullptr && node->op()->name == "Activation"
+             && node->attrs.dict["act_type"] == "relu") {
+        // if matched, set current batchnorm mirrow node to convolution so 
+        // batchnorm will be skipped
+        mirror_map[node.get()] = mirror_node;
+        // assume only one match for all inputs
+        patten_match = true;
+        mirror_node->attrs.dict["with_relu"] = "True";
+        mirror_node->op()->attr_parser(&(mirror_node->attrs));
+        // break here have problem?
+        break;
+      } else {
+        NodeEntry mirror_entry = NodeEntry{
+          mirror_node, e.index, e.version};
+        new_node->inputs.emplace_back(NodeEntry{mirror_node, e.index, e.version});
+      }
+    }
+    if (!patten_match) {
+      mirror_map[node.get()] = std::move(new_node);
+    }
+  });
+
+  std::vector<NodeEntry> outputs;
+  for (const auto& e : src.outputs) {
+    outputs.emplace_back(NodeEntry{mirror_map.at(e.node.get()), e.index, e.version});
+  }
+
+  Graph ret;
+  ret.outputs = std::move(outputs);
+  return ret;
+}
+
+Graph GraphFusionConvBN(Graph &src) {
+  std::unordered_map<Node*, NodePtr> mirror_map;
+  bool patten_match;
+  DFSVisit(src.outputs, [&](const NodePtr& node) {
+    // for one node, create a new node as mirror node, and then go through 
+    // the node's each input node, if the input node and current node doesn't
+    // form a fusion pattern, then add the input node's mirror node to this
+    // node's input, otherwise
+    NodePtr new_node = Node::Create();
+    *new_node = *node;
+    new_node->inputs.clear();
+    patten_match = false;
+    for (const auto& e : node->inputs) {
+      NodePtr mirror_node = mirror_map.at(e.node.get());
+      if (e.node->op() != nullptr && e.node->op()->name == "Convolution"
+             && node->op() != nullptr && node->op()->name == "BatchNorm") {
+        // if matched, set current batchnorm mirrow node to convolution so 
+        // batchnorm will be skipped
+        mirror_map[node.get()] = mirror_node;
+        // assume only one match for all inputs
+        patten_match = true;
+        mirror_node->attrs.dict["no_bias"] = "False";
+        mirror_node->op()->attr_parser(&(mirror_node->attrs));
+        bool find_bias = false;
+        std::string bias_name;
+        for (auto& conv_input_nodeEntry : mirror_node->inputs) {
+          if (conv_input_nodeEntry.node->attrs.name.find("weight") != std::string::npos) {
+            std::string& weight_name = conv_input_nodeEntry.node->attrs.name;
+            bias_name = weight_name;
+            bias_name.replace(bias_name.find("weight"),strlen("weight"), "bias");
+            std::cout<<"bias name is "<<bias_name<<std::endl;
+            weight_name.insert(0, "convBNReluPara_");
+          }
+          if (conv_input_nodeEntry.node->attrs.name.find("bias") != std::string::npos) {
+            find_bias = true;
+          }
+        }
+        
+        if (!find_bias)
+        {
+          NodePtr conv_bias_node = CreateNode("nullptr", bias_name);
+          NodeEntry conv_bias_entry = NodeEntry{ conv_bias_node, 0, 0 };
+          mirror_node->inputs.emplace_back(conv_bias_entry);
+        }
+        break;
+      } else {
+        NodeEntry mirror_entry = NodeEntry{
+          mirror_node, e.index, e.version};
+        new_node->inputs.emplace_back(NodeEntry{mirror_node, e.index, e.version});
+      }
+    }
+    if (!patten_match) {
+      mirror_map[node.get()] = std::move(new_node);
+    }
+  });
+
+  std::vector<NodeEntry> outputs;
+  for (const auto& e : src.outputs) {
+    outputs.emplace_back(NodeEntry{mirror_map.at(e.node.get()), e.index, e.version});
+  }
+
+  Graph ret;
+  ret.outputs = std::move(outputs);
+  return ret;
+}
+
+Graph FuseGraph(Graph &&src) {
+  Graph fused_graph = GraphFusionConvBN(src);
+  fused_graph = GraphFusionConvRelu(fused_graph);
+  return fused_graph;
 }
 
 Graph SetCalibTableToQuantizedGraph(Graph&& g) {
@@ -336,6 +462,11 @@ Graph SetCalibTableToQuantizedGraph(Graph&& g) {
   });
   return g;
 }
+
+NNVM_REGISTER_PASS(FuseGraph)
+.describe("")
+.set_body(FuseGraph)
+.set_change_graph(true);
 
 NNVM_REGISTER_PASS(QuantizeGraph)
 .describe("")
