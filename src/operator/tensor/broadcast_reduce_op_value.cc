@@ -46,6 +46,51 @@ Defined in )code";
   return doc;
 }
 
+void MyReduceMinCompute(const nnvm::NodeAttrs& attrs,
+                       const OpContext& ctx,
+                       const std::vector<TBlob>& inputs,
+                       const std::vector<OpReqType>& req,
+                       const std::vector<TBlob>& outputs) {
+  size_t i, size;
+  size = inputs[0].shape_.Size(); 
+  //MSHADOW_TYPE_SWITCH(outputs[0].type_flag_, DType, {
+  //MSHADOW_TYPE_SWITCH(mshadow::kFloat32, DType, {
+    typedef float DType;
+    DType min_val = (DType)1000;
+    const DType *start = inputs[0].dptr<DType>();
+#pragma omp parallel for reduction(min:min_val)
+    for (i=0; i<size; i++) {
+      if (min_val > *(start+i)) {
+        min_val = *(start+i);
+      }
+    }
+    *(outputs[0].dptr<DType>()) = min_val;
+    //std::cout << "Min compute: size " << size << " min " << min_val << std::endl;
+  //});
+}
+
+void MyReduceMaxCompute(const nnvm::NodeAttrs& attrs,
+                       const OpContext& ctx,
+                       const std::vector<TBlob>& inputs,
+                       const std::vector<OpReqType>& req,
+                       const std::vector<TBlob>& outputs) {
+  size_t i, size;
+  size = inputs[0].shape_.Size(); 
+  //MSHADOW_TYPE_SWITCH(outputs[0].type_flag_, DType, {
+    typedef float DType;
+    DType max_val = (DType)(-1000);
+    const DType *start = inputs[0].dptr<DType>();
+#pragma omp parallel for reduction(max:max_val)
+    for (i=0; i<size; i++) {
+      if (max_val < *(start+i)) {
+        max_val = *(start+i);
+      }
+    }
+    *(outputs[0].dptr<DType>()) = max_val;
+    //std::cout << "Max compute: size " << size << " max " << max_val << std::endl;
+  //});
+}
+
 template<>
 void L2NormComputeEx<cpu>(const nnvm::NodeAttrs& attrs,
                           const OpContext& ctx,
@@ -188,7 +233,8 @@ MXNET_OPERATOR_REGISTER_REDUCE_BACKWARD(_backward_nanprod)
 MXNET_OPERATOR_REGISTER_REDUCE(max)
 .add_alias("max_axis")
 .describe(get_reduce_axes_description("max", __LINE__))
-.set_attr<FCompute>("FCompute<cpu>", ReduceAxesCompute<cpu, mshadow::red::maximum>)
+//.set_attr<FCompute>("FCompute<cpu>", ReduceAxesCompute<cpu, mshadow::red::maximum>)
+.set_attr<FCompute>("FCompute<cpu>", MyReduceMaxCompute)
 .set_attr<FResourceRequest>("FResourceRequest",
   [](const NodeAttrs& attrs) {
     return std::vector<ResourceRequest>{ResourceRequest::kTempSpace};
@@ -202,7 +248,8 @@ MXNET_OPERATOR_REGISTER_REDUCE_BACKWARD(_backward_max)
 MXNET_OPERATOR_REGISTER_REDUCE(min)
 .add_alias("min_axis")
 .describe(get_reduce_axes_description("min", __LINE__))
-.set_attr<FCompute>("FCompute<cpu>", ReduceAxesCompute<cpu, mshadow::red::minimum>)
+//.set_attr<FCompute>("FCompute<cpu>", ReduceAxesCompute<cpu, mshadow::red::minimum>)
+.set_attr<FCompute>("FCompute<cpu>", MyReduceMinCompute)
 .set_attr<FResourceRequest>("FResourceRequest",
   [](const NodeAttrs& attrs) {
     return std::vector<ResourceRequest>{ResourceRequest::kTempSpace};
