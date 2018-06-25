@@ -58,13 +58,30 @@ def _fuse_update_params(qsym, params, aux_params):
             print "para name is ",name            
             original_name = name[len('convBNReluPara_'):]
             print "original_name is ",original_name
+            """
+            For resnet-v2 pretrained model
             if original_name.endswith('conv0_weight'):
                 bn_num = 'bn0'
             elif original_name.endswith('conv1_weight'):
               bn_num = 'bn2'
             elif original_name.endswith('conv2_weight'):
                 bn_num = 'bn3'
-            stage_unit_name = original_name[:-len('convX_weight')]
+            """
+            # below is for resnet-v1 pre-trained model:
+            if original_name.endswith('conv0_weight'):
+                bn_num = 'bn0'
+            elif original_name.find('sc_weight') != -1:
+                bn_num = 'sc'
+            elif original_name.endswith('conv1_weight'):
+              bn_num = 'bn1'
+            elif original_name.endswith('conv2_weight'):
+                bn_num = 'bn2'
+            elif original_name.endswith('conv3_weight'):
+                bn_num = 'bn3'
+            if original_name.find("sc_weight") != -1:
+                stage_unit_name = original_name[:-len('convXsc_weight')]
+            else:
+                stage_unit_name = original_name[:-len('convX_weight')]
             bn_gamma_name = stage_unit_name + bn_num + '_gamma'
             bn_beta_name = stage_unit_name + bn_num + '_beta'
             bn_moving_mean_name = stage_unit_name + bn_num + '_moving_mean'
@@ -76,6 +93,7 @@ def _fuse_update_params(qsym, params, aux_params):
 
             conv_weight = params[original_name]
             conv_bias_name = original_name[:-len('weight')] + 'bias'
+            print "bn_gamma_name is ", bn_gamma_name
             print "conv_weight_name is ", name
             print "conv_bias_name is ", conv_bias_name
             if(params.has_key(conv_bias_name)):
