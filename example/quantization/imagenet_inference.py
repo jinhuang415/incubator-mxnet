@@ -96,10 +96,35 @@ def score(sym, arg_params, aux_params, data, devs, label_name, max_num_examples,
         for m in metrics:
             logger.info(m.get())
 
+def benchmark_score(symbol_file, param_file, ctx, batch_size, num_batches, logger=None):
+    # get mod
+    sym, arg_params, aux_params = load_model(symbol_file, param_file, logger)
+    mod = mx.mod.Module(symbol=sym, context=ctx)
+    mod.bind(for_training     = False,
+             inputs_need_grad = False,
+             data_shapes      = [('data', (batch_size,)+data_shape)])
+    mod.set_params(arg_params, aux_params)
+
+    # get data
+    data = [mx.random.uniform(-1.0, 1.0, shape=shape, ctx=ctx) for _, shape in mod.data_shapes]
+    batch = mx.io.DataBatch(data, []) # empty label
+
+    # run
+    dry_run = 5                 # use 5 iterations to warm up
+    for i in range(dry_run+num_batches):
+        if i == dry_run:
+            tic = time.time()
+        mod.forward(batch, is_train=False)
+        for output in mod.get_outputs():
+            output.wait_to_read()
+
+    # return num images per second
+    return num_batches*batch_size/(time.time() - tic)
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser(description='Score a model on a dataset')
     parser.add_argument('--ctx', type=str, default='gpu')
+    parser.add_argument('--benchmark', type=bool, default=False, help='dummy data benchmark')
     parser.add_argument('--symbol-file', type=str, required=True, help='symbol file path')
     parser.add_argument('--param-file', type=str, required=True, help='param file path')
     parser.add_argument('--batch-size', type=int, default=32)
@@ -141,6 +166,9 @@ if __name__ == '__main__':
     batch_size = args.batch_size
     logger.info('batch size = %d for inference' % batch_size)
 
+    num_batches = args.num_inference_batches
+    logger.info('num_batches = %s' % num_batches)
+
     rgb_mean = args.rgb_mean
     logger.info('rgb_mean = %s' % rgb_mean)
     rgb_mean = [float(i) for i in rgb_mean.split(',')]
@@ -152,33 +180,38 @@ if __name__ == '__main__':
     image_shape = args.image_shape
     data_shape = tuple([int(i) for i in image_shape.split(',')])
     logger.info('Input data shape = %s' % str(data_shape))
+    
+    if args.benchmark == False:
+        dataset = args.dataset
+        download_dataset('http://data.mxnet.io/data/val_256_q90.rec', dataset)
+        logger.info('Dataset for inference: %s' % dataset)
 
-    dataset = args.dataset
-    download_dataset('http://data.mxnet.io/data/val_256_q90.rec', dataset)
-    logger.info('Dataset for inference: %s' % dataset)
+        # creating data iterator
+        data = mx.io.ImageRecordIter(path_imgrec=dataset,
+                                    label_width=1,
+                                    preprocess_threads=data_nthreads,
+                                    batch_size=batch_size,
+                                    data_shape=data_shape,
+                                    label_name=label_name,
+                                    rand_crop=False,
+                                    rand_mirror=False,
+                                    shuffle=True,
+                                    shuffle_chunk_seed=3982304,
+                                    seed=48564309,
+                                    **mean_args)
 
-    # creating data iterator
-    data = mx.io.ImageRecordIter(path_imgrec=dataset,
-                                 label_width=1,
-                                 preprocess_threads=data_nthreads,
-                                 batch_size=batch_size,
-                                 data_shape=data_shape,
-                                 label_name=label_name,
-                                 rand_crop=False,
-                                 rand_mirror=False,
-                                 shuffle=True,
-                                 shuffle_chunk_seed=3982304,
-                                 seed=48564309,
-                                 **mean_args)
+        # loading model
+        sym, arg_params, aux_params = load_model(symbol_file, param_file, logger)
 
-    # loading model
-    sym, arg_params, aux_params = load_model(symbol_file, param_file, logger)
+        # make sure that fp32 inference works on the same images as calibrated quantized model
+        logger.info('Skipping the first %d batches' % args.num_skipped_batches)
+        data = advance_data_iter(data, args.num_skipped_batches)
 
-    # make sure that fp32 inference works on the same images as calibrated quantized model
-    logger.info('Skipping the first %d batches' % args.num_skipped_batches)
-    data = advance_data_iter(data, args.num_skipped_batches)
-
-    num_inference_images = args.num_inference_batches * batch_size
-    logger.info('Running model %s for inference' % symbol_file)
-    score(sym, arg_params, aux_params, data, [ctx], label_name,
-          max_num_examples=num_inference_images, logger=logger)
+        num_inference_images = args.num_inference_batches * batch_size
+        logger.info('Running model %s for inference' % symbol_file)
+        score(sym, arg_params, aux_params, data, [ctx], label_name,
+            max_num_examples=num_inference_images, logger=logger)
+    else:
+        logger.info('Running model %s for inference' % symbol_file)
+        speed = benchmark_score(symbol_file, param_file, ctx, batch_size, num_batches, logger)
+        logger.info('batch size %2d, image/sec: %f', batch_size, speed)
