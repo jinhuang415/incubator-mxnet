@@ -57,8 +57,12 @@ static void MKLDNNQuantizedConvForward(const nnvm::NodeAttrs& attrs,
     weight_range = MaxAbs(*in_data[num_inputs+2].data().dptr<float>(),
                           *in_data[num_inputs+3].data().dptr<float>());
     quantized_data_range = MaxAbs(MaxValue<uint8_t>(), MinValue<uint8_t>());
-    quantized_out_range = quantized_weight_range =
-                             MinAbs(MaxValue<int8_t>(), MinValue<int8_t>());
+    quantized_weight_range = MinAbs(MaxValue<int8_t>(), MinValue<int8_t>());
+    if (param.with_relu) {
+      quantized_out_range = MaxAbs(MaxValue<uint8_t>(), MinValue<uint8_t>());
+    } else {
+      quantized_out_range = MinAbs(MaxValue<int8_t>(), MinValue<int8_t>());
+    }
     data_scale = quantized_data_range / data_range;
     weight_scale = quantized_weight_range / weight_range;
     out_scale = quantized_out_range / out_range;
