@@ -64,6 +64,7 @@ struct ConvolutionParam : public dmlc::Parameter<ConvolutionParam> {
   uint32_t num_group;
   uint64_t workspace;
   bool no_bias;
+  bool with_sum;
   dmlc::optional<int> cudnn_tune;
   bool cudnn_off;
   dmlc::optional<int> layout;
@@ -91,6 +92,8 @@ struct ConvolutionParam : public dmlc::Parameter<ConvolutionParam> {
               "the maximum temporary storage used for tuning the best CUDNN kernel when "
               "`limited_workspace` strategy is used.");
     DMLC_DECLARE_FIELD(no_bias).set_default(false)
+    .describe("Whether to disable bias parameter.");
+    DMLC_DECLARE_FIELD(with_sum).set_default(false)
     .describe("Whether to disable bias parameter.");
     DMLC_DECLARE_FIELD(cudnn_tune)
     .add_enum("off", conv::kOff)

@@ -37,7 +37,11 @@ bool QuantizedConvShape(const nnvm::NodeAttrs& attrs,
   using namespace mshadow;
   const ConvolutionParam& param = nnvm::get<ConvolutionParam>(attrs.parsed);
   CHECK_EQ(param.num_group, 1U) << "quantized_conv only supports num_group=1 for now";
-  CHECK_EQ(in_shape->size(), param.no_bias? 6U : 9U);
+  if (param.with_sum) {
+    CHECK_EQ(in_shape->size(), param.no_bias? 7U : 10U);
+  } else {
+    CHECK_EQ(in_shape->size(), param.no_bias? 6U : 9U);
+  }
   CHECK_EQ(out_shape->size(), 3U);
   if (param.layout.has_value()) {
     CHECK_EQ(param.layout.value(), mshadow::kNCHW) << "quantized_conv only supports NCHW for now";
@@ -96,6 +100,13 @@ bool QuantizedConvType(const nnvm::NodeAttrs& attrs,
   if (!param.no_bias) {
     TYPE_ASSIGN_CHECK(*in_type, 2, mshadow::kInt8);
   }
+  if (param.with_sum) {
+    if (param.no_bias) {
+      TYPE_ASSIGN_CHECK(*in_type, 7, mshadow::kInt32);
+    } else {
+      TYPE_ASSIGN_CHECK(*in_type, 10, mshadow::kInt32);
+    }
+  }
   const size_t start = param.no_bias? 2 : 3;
   const size_t end = param.no_bias? 6 : 9;
   for (size_t i = start; i < end; ++i) {
@@ -142,19 +153,33 @@ and max thresholds representing the threholds for quantizing the float32 output 
 .set_num_inputs(
   [](const NodeAttrs& attrs) {
     const ConvolutionParam& param = nnvm::get<ConvolutionParam>(attrs.parsed);
-    return param.no_bias? 6 : 9;
+    if (param.with_sum) {
+      return param.no_bias? 7 : 10;
+    } else {
+      return param.no_bias? 6 : 9;
+    }
   })
 .set_num_outputs(3)
 .set_attr_parser(ConvolutionParamParser)
 .set_attr<nnvm::FListInputNames>("FListInputNames",
   [](const NodeAttrs& attrs) {
     const ConvolutionParam& param = nnvm::get<ConvolutionParam>(attrs.parsed);
-    if (param.no_bias) {
-      return std::vector<std::string>{"data", "weight", "min_data", "max_data",
-                                      "min_weight", "max_weight"};
+    if (param.with_sum) {
+      if (param.no_bias) {
+        return std::vector<std::string>{"data", "weight", "min_data", "max_data",
+                                        "min_weight", "max_weight", "sum_input"};
+      } else {
+        return std::vector<std::string>{"data", "weight", "bias", "min_data", "max_data",
+                                        "min_weight", "max_weight", "min_bias", "max_bias", "sum_input"};
+      }
     } else {
-      return std::vector<std::string>{"data", "weight", "bias", "min_data", "max_data",
-                                      "min_weight", "max_weight", "min_bias", "max_bias"};
+      if (param.no_bias) {
+        return std::vector<std::string>{"data", "weight", "min_data", "max_data",
+                                        "min_weight", "max_weight"};
+      } else {
+        return std::vector<std::string>{"data", "weight", "bias", "min_data", "max_data",
+                                        "min_weight", "max_weight", "min_bias", "max_bias"};
+      }
     }
   })
 .set_attr<nnvm::FListOutputNames>("FListOutputNames",
@@ -178,6 +203,7 @@ and max thresholds representing the threholds for quantizing the float32 output 
 .add_argument("max_weight", "NDArray-or-Symbol", "Maximum value of weight.")
 .add_argument("min_bias", "NDArray-or-Symbol", "Minimum value of bias.")
 .add_argument("max_bias", "NDArray-or-Symbol", "Maximum value of bias.")
+.add_argument("sum_input", "NDArray-or-Symbol", "conv_sum fusion.")
 .add_arguments(ConvolutionParam::__FIELDS__());
 
 NNVM_REGISTER_OP(Convolution)
