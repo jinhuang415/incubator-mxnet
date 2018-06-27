@@ -55,9 +55,9 @@ def _fuse_update_params(qsym, params, aux_params):
     fused_params = {}
     for name in inputs_name:
         if name.startswith('convBNReluPara_'):
-            print "para name is ",name            
+            #print "para name is ",name            
             original_name = name[len('convBNReluPara_'):]
-            print "original_name is ",original_name
+            #print "original_name is ",original_name
             """
             For resnet-v2 pretrained model
             if original_name.endswith('conv0_weight'):
@@ -93,9 +93,9 @@ def _fuse_update_params(qsym, params, aux_params):
 
             conv_weight = params[original_name]
             conv_bias_name = original_name[:-len('weight')] + 'bias'
-            print "bn_gamma_name is ", bn_gamma_name
-            print "conv_weight_name is ", name
-            print "conv_bias_name is ", conv_bias_name
+            #print "bn_gamma_name is ", bn_gamma_name
+            #print "conv_weight_name is ", name
+            #print "conv_bias_name is ", conv_bias_name
             if(params.has_key(conv_bias_name)):
                 conv_bias = params[conv_bias_name]
             else:
@@ -106,7 +106,7 @@ def _fuse_update_params(qsym, params, aux_params):
   #          print "bn para is ",bn_gamma_name,bn_beta_name,bn_moving_mean_name,bn_moving_var_name
 
             conv_weight_after_bn = conv_weight
-            print type(bn_moving_var[0])," value is ", bn_moving_var[0]
+            #print type(bn_moving_var[0])," value is ", bn_moving_var[0]
             for i in range (len(conv_weight)):
                 conv_weight_after_bn[i,:,:,:] = conv_weight[i,:,:,:]*bn_gamma[i]/NDArray.sqrt(bn_moving_var[i] + 2e-05)
                 conv_bias[i] = (conv_bias[i] - bn_moving_mean[i])*bn_gamma[i]/NDArray.sqrt(bn_moving_var[i] + 2e-05) + bn_beta[i]
@@ -115,7 +115,7 @@ def _fuse_update_params(qsym, params, aux_params):
             fused_params[conv_bias_name] = conv_bias
     #        print "bias shape is ",conv_bias.shape
         elif name in params:
-            print "else name is ", name
+            #print "else name is ", name
             fused_params[name] = params[name]
 #    for k, v in params.items():
 #         print "params key are ",k
@@ -142,23 +142,53 @@ def _quantize_params(qsym, params, th_in_dict={}):
     inputs_name = qsym.list_arguments()
     quantized_params = {}
     for name in inputs_name:
-        if name.endswith(('weight_quantize', 'bias_quantize')):
+        if name.endswith(('weight_quantize')):
             original_name = name[:-len('_quantize')]
             param = params[original_name]
             val, vmin, vmax = ndarray.contrib.quantize(data=param,
                                                        min_range=ndarray.min(param),
                                                        max_range=ndarray.max(param),
                                                        out_type='int8')
-            print("quantize param {}, min/max {}/{}".format(name, vmin, vmax))
             quantized_params[name] = val
             quantized_params[name+'_min'] = vmin
             quantized_params[name+'_max'] = vmax
         elif name in params:
             quantized_params[name] = params[name]
     for name in th_in_dict:
-        layer_name = name.replace('_data', '')
-        quantized_params[layer_name+'_min'] = ndarray.array([th_in_dict[name][0]])
-        quantized_params[layer_name+'_max'] = ndarray.array([th_in_dict[name][1]])
+        in_layer = th_in_dict[name][0]
+        quantized_params[in_layer+'_min'] = ndarray.array([th_in_dict[name][1]])
+        quantized_params[in_layer+'_max'] = ndarray.array([th_in_dict[name][2]])
+    for name in inputs_name:
+        if name.endswith(('bias_quantize')):
+            original_name = name[:-len('_quantize')]
+            # resnet50 need convBNReluPara_ prefix while vgg16 doesn't need
+            weight_name = 'convBNReluPara_' + name.replace('bias','weight')
+            # weight_name = name.replace('bias','weight')
+            weight_min_name = weight_name + '_min'
+            weight_max_name = weight_name + '_max'
+            layer_name = name.replace('_bias_quantize','')
+            in_layer_min_name = th_in_dict[layer_name][0] + '_min'
+            in_layer_max_name = th_in_dict[layer_name][0] + '_max'
+
+            w_min = quantized_params[weight_min_name]
+            w_max = quantized_params[weight_max_name]
+            in_min = quantized_params[in_layer_min_name]
+            in_max = quantized_params[in_layer_max_name]
+            
+            bias_scale = 255.0 * 127.0 / max(abs(w_min.asscalar()), abs(w_max.asscalar())) \
+                           / max(abs(in_min.asscalar()), abs(in_max.asscalar()))
+
+            param = params[original_name]
+            val = ndarray.multiply(param, bias_scale).astype('int32')
+            # don't care bias min/max
+            vmin = ndarray.zeros([1]) 
+            vmax = ndarray.zeros([1]) 
+
+            quantized_params[name] = val
+            quantized_params[name+'_min'] = vmin
+            quantized_params[name+'_max'] = vmax
+        elif name in params:
+            quantized_params[name] = params[name]
     return quantized_params
 
 def _fuse_symbol(sym):
@@ -245,7 +275,7 @@ class _LayerStatsCollector(object):
         input_calib_name = None
         if name.endswith('_data'):
             # For input calib, the name format passing by graph_executor.cc is
-            # "<prev-layer>-<calib-layer>_data", we want to check if calib-layer
+            # "<calib-layer>-<prev-layer>_data", we want to check if calib-layer
             # is within our input calibrated layers and should save the layer
             # input stats with previous layer name as key and finally save into
             # parameter file
@@ -263,10 +293,12 @@ class _LayerStatsCollector(object):
             else:
                 self.nd_out_dict[name] = [arr]
         elif name.endswith('_data'):
-            if input_calib_prev_name in self.nd_in_dict:
-                self.nd_in_dict[input_calib_prev_name].append(arr)
+            layer_name = name.split('-')[0] 
+            input_layer = input_calib_prev_name.replace('_data','')
+            if layer_name in self.nd_in_dict:
+                self.nd_in_dict[layer_name][1].append(arr)
             else:
-                self.nd_in_dict[input_calib_prev_name] = [arr]
+                self.nd_in_dict[layer_name] = [input_layer, [arr]]
         if self.logger is not None:
             self.logger.info("Collecting layer %s stats of shape %s" % (name, arr.shape))
 
@@ -289,11 +321,12 @@ class _LayerStatsMinMaxCollector(object):
         input_calib_name = None
         if name.endswith('_data'):
             # For input calib, the name format passing by graph_executor.cc is
-            # "<prev-layer>-<calib-layer>_data", we want to check if calib-layer
+            # "<calib-layer>-<prev-layer>_data", we want to check if calib-layer
             # is within our input calibrated layers and should save the layer
             # input stats with previous layer name as key and finally save into
             # parameter file
-            input_calib_prev_name = name.split('-')[1]
+            # input_calib_prev_name = name.split('-')[1]
+            input_calib_prev_name = name.split('-')[1].replace('_data','')
             input_calib_name = name.split('-')[0] + '_data'
         if not (self.include_layer is not None and self.include_layer(name)) and \
            not (self.input_calib_layer is not None and input_calib_name is not None
@@ -311,13 +344,16 @@ class _LayerStatsMinMaxCollector(object):
             else:
                 self.min_max_out_dict[name] = (min_range, max_range)
         elif name.endswith('_data'):
-            if input_calib_prev_name in self.min_max_in_dict:
-                cur_min_max = self.min_max_in_dict[input_calib_prev_name]
-                self.min_max_in_dict[input_calib_prev_name] = \
-                                          (min(cur_min_max[0], min_range),
-                                           max(cur_min_max[1], max_range))
+            layer_name = name.split('-')[0]
+            if layer_name in self.min_max_in_dict:
+                cur_min_max = self.min_max_in_dict[layer_name]
+                self.min_max_in_dict[layer_name] = \
+                                          (input_calib_prev_name,
+                                           min(cur_min_max[1], min_range),
+                                           max(cur_min_max[2], max_range))
             else:
-                self.min_max_in_dict[input_calib_prev_name] = (min_range, max_range)
+                self.min_max_in_dict[layer_name] = (input_calib_prev_name, 
+                                                    min_range, max_range)
             name = input_calib_name
         if self.logger is not None:
             self.logger.info("Collecting layer %s stats min_range=%f, max_range=%f"
@@ -504,6 +540,31 @@ def _get_optimal_threshold(arr, num_bins=8001, num_quantized_bins=255):
     return min_val, max_val, min_divergence, opt_th
 # pylint: enable=line-too-long
 
+def _get_optimal_thresholds_in(nd_dict, num_bins=8001, num_quantized_bins=255, logger=None):
+    """Given a ndarray dict, find the optimal threshold for quantizing each value of the key."""
+    if stats is None:
+        raise ImportError('scipy.stats is required for running entropy mode of calculating'
+                          ' the optimal thresholds for quantizing FP32 ndarrays into int8.'
+                          ' Please check if the scipy python bindings are installed.')
+    assert isinstance(nd_dict, dict)
+    if logger is not None:
+        logger.info('Calculating optimal thresholds for quantization using KL divergence'
+                    ' with num_bins=%d and num_quantized_bins=%d' % (num_bins, num_quantized_bins))
+    th_dict = {}
+    # copy nd_dict keys since the keys() only returns a view in python3
+    layer_names = list(nd_dict.keys())
+    for name in layer_names:
+        assert name in nd_dict
+        min_val, max_val, min_divergence, opt_th =\
+            _get_optimal_threshold(nd_dict[name][1], num_bins=num_bins,
+                                   num_quantized_bins=num_quantized_bins)
+        th_dict[name] = (nd_dict[name][0], -opt_th, opt_th)
+        del nd_dict[name]  # release the memory of ndarray
+        if logger is not None:
+            logger.info('layer=%s, min_val=%f, max_val=%f, min_divergence=%f, optimal_threshold=%f'
+                        % (name, min_val, max_val, min_divergence, opt_th))
+    return th_dict
+
 
 def _get_optimal_thresholds(nd_dict, num_bins=8001, num_quantized_bins=255, logger=None):
     """Given a ndarray dict, find the optimal threshold for quantizing each value of the key."""
@@ -664,9 +725,9 @@ def quantize_model(sym, arg_params, aux_params,
                          ' the names of the symbols that will not be quantized,'
                          ' while received type %s' % str(type(excluded_sym_names)))
     fsym = _fuse_symbol(sym)
-    arg_params = _fuse_update_params(fsym, arg_params, aux_params)
-    #save_symbol("jin-debug.json", fsym, logger)
-    #save_params("jin-debug.params", arg_params, aux_params, logger)
+    farg_params = _fuse_update_params(fsym, arg_params, aux_params)
+    #save_symbol("debug-fuse.json", fsym, logger)
+    #save_params("debug-fuse.params", farg_params, aux_params, logger)
     #import sys
     #sys.exit()
 
@@ -691,7 +752,7 @@ def quantize_model(sym, arg_params, aux_params,
         raise ValueError('unknown quantized_dtype %s received,'
                          ' expected `int8` or `uint8`' % quantized_dtype)
     qsym = _quantize_symbol(fsym, excluded_symbols=excluded_syms,
-                            offline_params=list(arg_params.keys()),
+                            offline_params=list(farg_params.keys()),
                             quantized_dtype=quantized_dtype,
                             disable_requantize=disable_requantize,
                             input_calib_layers=input_calib_layers)
@@ -714,7 +775,7 @@ def quantize_model(sym, arg_params, aux_params,
                      label_shapes=calib_data.provide_label)
         else:
             mod.bind(for_training=False, data_shapes=calib_data.provide_data)
-        mod.set_params(arg_params, aux_params)
+        mod.set_params(farg_params, aux_params)
         if calib_mode == 'entropy':
             nd_in_dict, nd_out_dict, num_examples = \
                 _collect_layer_stats(mod, calib_data, include_layer=calib_layer,
@@ -723,7 +784,7 @@ def quantize_model(sym, arg_params, aux_params,
                                      logger=logger)
             logger.info('Collected layer stats from FP32 model using %d examples' % num_examples)
             logger.info('Calculating optimal thresholds for quantization')
-            th_in_dict = _get_optimal_thresholds(nd_in_dict, logger=logger)
+            th_in_dict = _get_optimal_thresholds_in(nd_in_dict, logger=logger)
             th_out_dict = _get_optimal_thresholds(nd_out_dict, logger=logger)
         elif calib_mode == 'naive':
             th_in_dict, th_out_dict, num_examples = \
@@ -743,6 +804,6 @@ def quantize_model(sym, arg_params, aux_params,
         th_in_dict = {}
 
     logger.info('Quantizing parameters')
-    qarg_params = _quantize_params(qsym, arg_params, th_in_dict)
+    qarg_params = _quantize_params(qsym, farg_params, th_in_dict)
 
     return qsym, qarg_params, aux_params
