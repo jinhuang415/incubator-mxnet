@@ -54,7 +54,8 @@ def save_params(fname, arg_params, aux_params, logger=None):
 if __name__ == '__main__':
     parser = argparse.ArgumentParser(description='Generate a calibrated quantized model from a FP32 model')
     parser.add_argument('--ctx', type=str, default='gpu')
-    parser.add_argument('--model', type=str, choices=['imagenet1k-resnet-152', 'imagenet1k-resnet-50', 'imagenet1k-resnet-50-v1', 'imagenet1k-inception-bn', 'imagenet1k-vgg-16'],
+    parser.add_argument('--model', type=str, choices=['imagenet1k-resnet-152', 'imagenet1k-resnet-50', 'imagenet1k-resnet-50-v1',
+                                                      'imagenet1k-inception-v3', 'imagenet1k-inception-bn', 'imagenet1k-vgg-16'],
                         help='currently only supports imagenet1k-resnet-152, imagenet1k-inception-bn or imagenet1k-vgg-16')
     parser.add_argument('--batch-size', type=int, default=32)
     parser.add_argument('--label-name', type=str, default='softmax_label')
@@ -137,12 +138,15 @@ if __name__ == '__main__':
     logger.info('calibration mode set to %s' % calib_mode)
 
     # download calibration dataset
-    if calib_mode != 'none':
+    if calib_mode != 'none' and args.model != 'imagenet1k-inception-v3':
         download_calib_dataset('http://data.mxnet.io/data/val_256_q90.rec', args.calib_dataset)
 
     if args.model == 'imagenet1k-resnet-50-v1':
         prefix, epoch = "./model/imagenet1k-resnet-50-v1", 0
         sym, arg_params, aux_params = mx.model.load_checkpoint("./model/imagenet1k-resnet-50-v1", 0)
+    elif args.model == 'imagenet1k-inception-v3':
+        prefix, epoch = "./model/imagenet1k-inception-v3", 0
+        sym, arg_params, aux_params = mx.model.load_checkpoint("./model/imagenet1k-inception-v3", 0)
     else:
         # download model
         prefix, epoch = download_model(model_name=args.model, logger=logger)
@@ -161,13 +165,16 @@ if __name__ == '__main__':
     data_nthreads = args.data_nthreads
 
     # get image shape
-    image_shape = args.image_shape
+    if args.model == ('imagenet1k-inception-v3' or 'imagenet1k-inception-v4'):
+        image_shape = '3,299,299'
+    else:
+        image_shape = args.image_shape
 
     exclude_first_conv = args.exclude_first_conv
     excluded_sym_names = []
     input_calib_layer = None
     if args.model.find("resnet") != -1:
-        rgb_mean = '0,0,0'
+        rgb_mean = '123.68,116.779,103.939'
         if args.ctx == 'gpu':
             calib_layer = lambda name: name.endswith('_output') and (name.find('conv') != -1
                                                                      or name.find('sc') != -1
@@ -210,8 +217,17 @@ if __name__ == '__main__':
                                                    name.find('pool') != -1))
             excluded_sym_names += ['flatten_0', 'fc6', 'fc7', 'fc8']
         if exclude_first_conv:
-            #excluded_sym_names += ['conv1_1', 'relu1_1']
             excluded_sym_names += ['conv1_1']
+    elif args.model == 'imagenet1k-inception-v3':
+        rgb_mean = '123.68,116.779,103.939'
+        if args.ctx == 'gpu':
+            calib_layer = lambda name: name.endswith('_output') and (name.find('conv') != -1
+                                                                  or name.find('fc') != -1)
+        else:
+            calib_layer = lambda name: name.endswith('_output') and (name.find('conv') != -1)
+            excluded_sym_names += ['flatten', 'fc1']
+            if exclude_first_conv:
+                excluded_sym_names += ['conv_conv2d']
     else:
         raise ValueError('model %s is not supported in this script' % args.model)
 
