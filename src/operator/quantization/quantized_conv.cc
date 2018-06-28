@@ -69,6 +69,9 @@ bool QuantizedConvShape(const nnvm::NodeAttrs& attrs,
   const int end = param.no_bias? 6 : 9;
   for (int i = start; i < end; ++i) {
     SHAPE_ASSIGN_CHECK(*in_shape, i, TShape{1});
+    if (param.with_sum) {
+      SHAPE_ASSIGN_CHECK(*in_shape, end, (*out_shape)[0]);
+    }
   }
   if (!param.no_bias) {
     SHAPE_ASSIGN_CHECK(*in_shape, 2, Shape1(param.num_filter));
@@ -111,6 +114,7 @@ bool QuantizedConvType(const nnvm::NodeAttrs& attrs,
   const size_t end = param.no_bias? 6 : 9;
   for (size_t i = start; i < end; ++i) {
     TYPE_ASSIGN_CHECK(*in_type, i, mshadow::kFloat32);
+    
   }
 
   if (param.out_type.has_value()) {
