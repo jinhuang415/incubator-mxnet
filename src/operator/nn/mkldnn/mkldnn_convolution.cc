@@ -76,6 +76,12 @@ mkldnn::convolution_forward::primitive_desc GetConvFwdImpl(
   if (param.with_sum) {
     float scale = 1.0f;
     ops.append_sum(scale);
+  }
+  if (param.with_postsum_relu) {
+    float scale = 1.0f;
+    float alpha = 0.0f;
+    float beta = 1.0f;
+    ops.append_eltwise(scale, eltwise_relu, alpha, beta);
     attr.set_post_ops(ops);
   }
   if (param.dilate.ndim() == 0 && bias == nullptr) {
