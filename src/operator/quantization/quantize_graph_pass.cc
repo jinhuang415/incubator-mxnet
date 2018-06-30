@@ -147,6 +147,7 @@ Graph QuantizeGraph(Graph &&src) {
           } else {
             NodePtr min_node = InsertNode("min",
                 e.node->attrs.name + "_min", quantize_node, mirror_entry);
+            min_node->op()->attr_parser(&(min_node->attrs));
 
             NodePtr max_node = InsertNode("max",
                 e.node->attrs.name + "_max", quantize_node, mirror_entry);
