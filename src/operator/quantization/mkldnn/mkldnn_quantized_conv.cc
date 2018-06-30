@@ -90,8 +90,18 @@ static void MKLDNNQuantizedConvForward(const nnvm::NodeAttrs& attrs,
     weight_mem = weight.GetMKLDNNData();
     CHECK(weight_mem->get_primitive_desc() == fwd.fwd_pd.weights_primitive_desc());
   }
-  auto out_mem = CreateMKLDNNMem(out_data[conv::kOut], fwd.fwd_pd.dst_primitive_desc(),
-                                 req[conv::kOut]);
+  // auto out_mem = CreateMKLDNNMem(out_data[conv::kOut], fwd.fwd_pd.dst_primitive_desc(),
+  //                                req[conv::kOut]);
+  mkldnn_output_t out_mem;
+  size_t sum_index;
+  if (param.with_sum) {
+    LOG(INFO) << "with sum: " << in_data[3].GetMKLDNNData()->get_primitive_desc().desc().data.format;
+    sum_index = param.no_bias ? 2 : 3;
+    out_mem = mkldnn_output_t(OutDataOp::Noop, const_cast<mkldnn::memory *>(in_data[sum_index].GetMKLDNNData()));
+  } else {
+    out_mem = CreateMKLDNNMem(out_data[conv::kOut], fwd.fwd_pd.dst_primitive_desc(),
+                              req[conv::kOut]);
+  }
   const mkldnn::memory *bias_mem = nullptr;
   if (!param.no_bias)
     bias_mem = in_data[conv::kBias].GetMKLDNNDataReorder(fwd.fwd_pd.bias_primitive_desc());
@@ -100,6 +110,7 @@ static void MKLDNNQuantizedConvForward(const nnvm::NodeAttrs& attrs,
 
   CommitOutput(out_data[conv::kOut], out_mem);
   MKLDNNStream::Get()->Submit();
+  LOG(INFO) << out_data[conv::kOut].GetMKLDNNData()->get_primitive_desc().desc().data.format;
   Stream<cpu> *s = ctx.get_stream<cpu>();
   if (param.min_calib_range.has_value() && param.max_calib_range.has_value()) {
     *out_data[1].data().dptr<float>() = param.min_calib_range.value();

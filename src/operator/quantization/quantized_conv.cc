@@ -193,6 +193,14 @@ and max thresholds representing the threholds for quantizing the float32 output 
   [](const NodeAttrs& attrs) {
     return std::vector<ResourceRequest>(1, ResourceRequest::kTempSpace);
   })
+.set_attr<nnvm::FInplaceOption>("FInplaceOption", [](const NodeAttrs& attrs) {
+  const ConvolutionParam& params = nnvm::get<ConvolutionParam>(attrs.parsed);
+  if (params.with_sum) {
+    return std::vector<std::pair<int, int>>{std::pair<int, int>{3, 0}};//params.no_bias? 2 : 3, 0}};
+  } else {
+    return std::vector<std::pair<int, int>>();
+  }
+})
 
 .set_attr<FNeedRequantize>("FNeedRequantize", [](const NodeAttrs& attrs) { return true; })
 .add_argument("data", "NDArray-or-Symbol", "Input data.")
