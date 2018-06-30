@@ -147,7 +147,6 @@ Graph QuantizeGraph(Graph &&src) {
           } else {
             NodePtr min_node = InsertNode("min",
                 e.node->attrs.name + "_min", quantize_node, mirror_entry);
-            min_node->op()->attr_parser(&(min_node->attrs));
 
             NodePtr max_node = InsertNode("max",
                 e.node->attrs.name + "_max", quantize_node, mirror_entry);
@@ -396,9 +395,82 @@ Graph GraphFusionConvBN(Graph &src) {
   return ret;
 }
 
+Graph GraphFusionSparsity(Graph &src) {
+  std::unordered_map<Node*, NodePtr> mirror_map;
+  DFSVisit(src.outputs, [&](const NodePtr& node) {
+    NodePtr new_node = Node::Create();
+    *new_node = *node;
+    new_node->inputs.clear();
+    // find the convolution node which need to adjust stride to (1, 1)
+    if (node->op() != nullptr && node->op()->name == "Convolution" &&
+        node->attrs.dict["stride"] == "(2, 2)" && node->attrs.dict["kernel"] == "(1, 1)") {
+      new_node->attrs.dict["stride"] = "(1, 1)";
+      new_node->op()->attr_parser(&(new_node->attrs));
+      // from the convolution node, go through input iteratively to find chain
+      // relu --> elemwise_add --> conv --> conv, and adjust last convolution's
+      // stride to (2, 2), then find the elemwise_add non-conv input path to
+      // insert a pooling node with stride (2, 2) between elemwise_add and its
+      // non-conv input node
+      for (const auto& e : node->inputs) {
+        NodePtr mirror_e = mirror_map.at(e.node.get());
+        if (mirror_e->op() != nullptr && mirror_e->op()->name == "Activation") {
+          for (auto& relu_in : mirror_e->inputs) {
+            if (relu_in.node->op() != nullptr && relu_in.node->op()->name == "elemwise_add" 
+                 && !relu_in.node->attrs.dict.count("updated")) {
+              for (size_t i = 0; i < relu_in.node->inputs.size(); i++) {
+                auto sum_in = relu_in.node->inputs[i];
+                if (sum_in.node->op() != nullptr && sum_in.node->op()->name == "Convolution") { 
+                  for (auto& conv_in : sum_in.node->inputs) {
+                    if (conv_in.node->op() != nullptr && conv_in.node->op()->name == "Convolution") { 
+                      conv_in.node->attrs.dict["stride"] = "(2, 2)";
+                      conv_in.node->op()->attr_parser(&(conv_in.node->attrs));
+                    }
+                  }
+                } else {
+                  // append sum's non-conv input node to new pooling's input
+                  NodePtr pooling_node = CreateNode("Pooling", e.node->attrs.name + "_prior_pool");
+                  pooling_node->inputs.emplace_back(sum_in);
+                  pooling_node->attrs.dict["stride"] = "(2, 2)"; 
+                  pooling_node->attrs.dict["kernel"] = "(1, 1)"; 
+                  pooling_node->attrs.dict["pad"] = "(0, 0)"; 
+                  pooling_node->attrs.dict["pool_type"] = "max";
+                  pooling_node->op()->attr_parser(&(pooling_node->attrs));
+
+                  // modify sum's non-conv input node to new pooling node
+                  relu_in.node->inputs[i] = NodeEntry{pooling_node, 0, 0};
+                }
+              }
+              // set "updated" so the next convolution after elemwise will only
+              // update its own stride and no need to execute above logic again
+              relu_in.node->attrs.dict["updated"] = "True";
+            }
+          }
+        }
+        new_node->inputs.emplace_back(NodeEntry{mirror_e, e.index, e.version});
+      }
+    } else {
+      for (const auto& e : node->inputs) {
+        NodePtr mirror_e = mirror_map.at(e.node.get());
+        new_node->inputs.emplace_back(NodeEntry{mirror_e, e.index, e.version});
+      }
+    }
+    mirror_map[node.get()] = std::move(new_node);
+  });
+
+  std::vector<NodeEntry> outputs;
+  for (const auto& e : src.outputs) {
+    outputs.emplace_back(NodeEntry{mirror_map.at(e.node.get()), e.index, e.version});
+  }
+
+  Graph ret;
+  ret.outputs = std::move(outputs);
+  return ret;
+}
+
 Graph FuseGraph(Graph &&src) {
   Graph fused_graph = GraphFusionConvBN(src);
   fused_graph = GraphFusionConvRelu(fused_graph);
+  fused_graph = GraphFusionSparsity(fused_graph);
   return fused_graph;
 }
 
