@@ -42,10 +42,30 @@ static inline index_t AddPad(index_t dsize, index_t pad) {
 
 static inline std::vector<std::string> ListArguments(const ConvolutionParam& param_) {
   if (!param_.no_bias) {
-    return {"data", "weight", "bias"};
+    if (param_.with_sum)
+      return {"data", "weight", "bias", "sum_input"};
+    else
+      return {"data", "weight", "bias"};
   } else {
-    return {"data", "weight"};
+    if (param_.with_sum)
+      return {"data", "weight", "sum_input"};
+    else
+      return {"data", "weight"};
   }
+}
+
+static inline std::string PrintArguments(const ConvolutionParam& param_) {
+  auto args = ListArguments(param_);
+  std::string str = "[";
+  for (const auto &arg : args) {
+    str += arg + ", ";
+  }
+  return str.substr(0, str.size() - 2) + "]";
+}
+
+conv::ConvolutionOpInputs conv::GetKsum(bool no_bias) {
+  conv::ConvolutionOpInputs ksum = kBias;
+  return no_bias ? ksum : static_cast<conv::ConvolutionOpInputs>(ksum + 1);
 }
 
 #if MXNET_USE_MKLDNN == 1
@@ -85,11 +105,7 @@ static bool ConvolutionShape(const nnvm::NodeAttrs& attrs,
                              std::vector<TShape> *out_shape) {
   using namespace mshadow;
   const ConvolutionParam& param_ = nnvm::get<ConvolutionParam>(attrs.parsed);
-  if (!param_.no_bias) {
-    CHECK_EQ(in_shape->size(), 3U) << "Input:[data, weight, bias]";
-  } else {
-    CHECK_EQ(in_shape->size(), 2U) << "Input:[data, weight]";
-  }
+  CHECK_EQ(in_shape->size(), GetInShapeSize(param_)) << "Inputs: " << PrintArguments(param_);
   // CHECK_EQ(out_shape->size(), 1) << "Output: [output]";
   out_shape->resize(1, TShape());
   const TShape &dshp = (*in_shape)[conv::kData];
@@ -125,6 +141,12 @@ static bool ConvolutionShape(const nnvm::NodeAttrs& attrs,
     oshape[2] = dshape[2] ?
       (AddPad(dshape[2], param_.pad[0]) - dilated_ksize_x) / param_.stride[0] + 1 : 0;
     SHAPE_ASSIGN_CHECK(*out_shape, 0, ConvertLayout(oshape, kNCW, param_.layout.value()));
+
+    if (param_.with_sum) {
+      SHAPE_ASSIGN_CHECK(*in_shape, conv::GetKsum(param_.no_bias),
+                        (*out_shape)[0]);
+    }
+
     // Perform incomplete shape inference. Fill in the missing values in data shape.
     // 1) We can always fill in the batch_size.
     // 2) We can back-calculate the input height/width if the corresponding stride is 1.
@@ -175,6 +197,12 @@ static bool ConvolutionShape(const nnvm::NodeAttrs& attrs,
     oshape[3] = dshape[3] ?
       (AddPad(dshape[3], param_.pad[1]) - dilated_ksize_x) / param_.stride[1] + 1 : 0;
     SHAPE_ASSIGN_CHECK(*out_shape, 0, ConvertLayout(oshape, kNCHW, param_.layout.value()));
+
+    if (param_.with_sum) {
+      SHAPE_ASSIGN_CHECK(*in_shape, conv::GetKsum(param_.no_bias),
+                        (*out_shape)[0]);
+    }
+
     // Perform incomplete shape inference. Fill in the missing values in data shape.
     // 1) We can always fill in the batch_size.
     // 2) We can back-calculate the input height/width if the corresponding stride is 1.
@@ -237,6 +265,12 @@ static bool ConvolutionShape(const nnvm::NodeAttrs& attrs,
     oshape[4] = dshape[4] ?
       (AddPad(dshape[4], param_.pad[2]) - dilated_ksize_x) / param_.stride[2] + 1 : 0;
     SHAPE_ASSIGN_CHECK(*out_shape, 0, ConvertLayout(oshape, kNCDHW, param_.layout.value()));
+
+    if (param_.with_sum) {
+      SHAPE_ASSIGN_CHECK(*in_shape, conv::GetKsum(param_.no_bias),
+                        (*out_shape)[0]);
+    }
+
     // Perform incomplete shape inference. Fill in the missing values in data shape.
     // 1) We can always fill in the batch_size.
     // 2) We can back-calculate the input depth/height/width if the corresponding stride is 1.
@@ -294,7 +328,7 @@ inline static bool ConvStorageType(const nnvm::NodeAttrs& attrs,
                                    std::vector<int> *in_attrs,
                                    std::vector<int> *out_attrs) {
   const ConvolutionParam& param = nnvm::get<ConvolutionParam>(attrs.parsed);
-  uint32_t in_expected = param.no_bias ? 2 : 3;
+  uint32_t in_expected = GetInShapeSize(param);
   CHECK_EQ(in_attrs->size(), in_expected);
   CHECK_EQ(out_attrs->size(), 1);
 
@@ -470,17 +504,14 @@ There are other options to tune the performance.
 )code" ADD_FILELINE)
 .set_num_inputs([](const NodeAttrs& attrs) {
   const ConvolutionParam& params = nnvm::get<ConvolutionParam>(attrs.parsed);
-  return params.no_bias ? 2 : 3;
+  return GetInShapeSize(params);
 })
 .set_num_outputs(1)
 .set_attr_parser(ConvolutionParamParser)
 .set_attr<nnvm::FListInputNames>("FListInputNames",
     [](const NodeAttrs& attrs) {
   const ConvolutionParam& params = nnvm::get<ConvolutionParam>(attrs.parsed);
-  if (params.no_bias)
-    return std::vector<std::string>{"data", "weight"};
-  else
-    return std::vector<std::string>{"data", "weight", "bias"};
+  return ListArguments(params);
 })
 .set_attr<nnvm::FListOutputNames>("FListOutputNames",
     [](const NodeAttrs& attrs) {

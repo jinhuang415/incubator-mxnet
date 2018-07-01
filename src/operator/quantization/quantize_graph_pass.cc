@@ -283,6 +283,52 @@ Graph QuantizeGraph(Graph &&src) {
   return ret;
 }
 
+Graph GraphFusionConvSum(Graph &src) {
+  std::unordered_map<Node*, NodePtr> mirror_map;
+  bool patten_match;
+  DFSVisit(src.outputs, [&](const NodePtr& node) {
+    // for one node, create a new node as mirror node, and then go through 
+    // the node's each input node, if the input node and current node doesn't
+    // form a fusion pattern, then add the input node's mirror node to this
+    // node's input, otherwise
+    NodePtr new_node = Node::Create();
+    *new_node = *node;
+    new_node->inputs.clear();
+    patten_match = false;
+    for (const auto& e : node->inputs) {
+      NodePtr mirror_node = mirror_map.at(e.node.get());
+      if (e.node->op() != nullptr && e.node->op()->name == "Convolution"
+             && node->op() != nullptr && node->op()->name == "elemwise_add") {
+        // if matched, set current Conv mirrow node with sum
+        mirror_map[node.get()] = mirror_node;
+        // assume only one match for all inputs
+        patten_match = true;
+        mirror_node->attrs.dict["with_sum"] = "True";
+        mirror_node->op()->attr_parser(&(mirror_node->attrs));
+        mirror_node->inputs.emplace_back(NodeEntry{node->inputs[1].node, e.index, e.version});
+        // break here have problem?
+        break;
+      } else {
+        NodeEntry mirror_entry = NodeEntry{
+          mirror_node, e.index, e.version};
+        new_node->inputs.emplace_back(NodeEntry{mirror_node, e.index, e.version});
+      }
+    }
+    if (!patten_match) {
+      mirror_map[node.get()] = std::move(new_node);
+    }
+  });
+
+  std::vector<NodeEntry> outputs;
+  for (const auto& e : src.outputs) {
+    outputs.emplace_back(NodeEntry{mirror_map.at(e.node.get()), e.index, e.version});
+  }
+
+  Graph ret;
+  ret.outputs = std::move(outputs);
+  return ret;
+}
+
 Graph GraphFusionConvRelu(Graph &src) {
   std::unordered_map<Node*, NodePtr> mirror_map;
   bool patten_match;
@@ -398,6 +444,8 @@ Graph GraphFusionConvBN(Graph &src) {
 
 Graph FuseGraph(Graph &&src) {
   Graph fused_graph = GraphFusionConvBN(src);
+  fused_graph = GraphFusionConvRelu(fused_graph);
+  fused_graph = GraphFusionConvSum(fused_graph);
   fused_graph = GraphFusionConvRelu(fused_graph);
   return fused_graph;
 }

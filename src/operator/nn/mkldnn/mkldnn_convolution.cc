@@ -76,14 +76,15 @@ mkldnn::convolution_forward::primitive_desc GetConvFwdImpl(
   if (param.with_sum) {
     float scale = 1.0f;
     ops.append_sum(scale);
-  }
-  if (param.with_postsum_relu) {
-    float scale = 1.0f;
-    float alpha = 0.0f;
-    float beta = 1.0f;
-    ops.append_eltwise(scale, eltwise_relu, alpha, beta);
     attr.set_post_ops(ops);
   }
+  // if (param.with_postsum_relu) {
+  //   float scale = 1.0f;
+  //   float alpha = 0.0f;
+  //   float beta = 1.0f;
+  //   ops.append_eltwise(scale, eltwise_relu, alpha, beta);
+  //   attr.set_post_ops(ops);
+  // }
   if (param.dilate.ndim() == 0 && bias == nullptr) {
     mkldnn::convolution_forward::desc desc(prop, mkldnn::algorithm::convolution_direct,
         data_md, weight_md, out_md, strides, padding, padding, mkldnn::padding_kind::zero);
@@ -318,8 +319,15 @@ void MKLDNNConvolutionForward(const nnvm::NodeAttrs& attrs, const OpContext &ctx
       CHECK(weight_mem->get_primitive_desc() == fwd.fwd_pd.weights_primitive_desc());
     }
   }
-  auto out_mem = CreateMKLDNNMem(out_data[conv::kOut], fwd.fwd_pd.dst_primitive_desc(),
-                                 req[conv::kOut]);
+  mkldnn_output_t out_mem;
+  if (!param.with_sum) {
+    out_mem = CreateMKLDNNMem(out_data[conv::kOut],
+                              fwd.fwd_pd.dst_primitive_desc(), req[conv::kOut]);
+  } else {
+    auto &sum = in_data[conv::GetKsum(param.no_bias)];
+    out_mem = mkldnn_output_t(OutDataOp::Noop, const_cast<mkldnn::memory *>(sum.GetMKLDNNData()));
+  }
+
   const mkldnn::memory *bias_mem = nullptr;
   if (!param.no_bias)
     bias_mem = in_data[conv::kBias].GetMKLDNNDataReorder(fwd.fwd_pd.bias_primitive_desc());

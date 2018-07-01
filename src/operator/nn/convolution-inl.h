@@ -53,6 +53,8 @@ enum ConvolutionOpInputs {kData, kWeight, kBias};
 enum ConvolutionOpOutputs {kOut};
 enum ConvolutionOpResource {kTempSpace};
 enum ConvolutionOpCudnnTune {kOff, kLimited, kFastest};
+
+ConvolutionOpInputs GetKsum(bool no_bias);
 }
 
 struct ConvolutionParam : public dmlc::Parameter<ConvolutionParam> {
@@ -156,6 +158,10 @@ struct ConvolutionParam : public dmlc::Parameter<ConvolutionParam> {
 void ConvolutionParamParser(nnvm::NodeAttrs* attrs);
 
 typedef ParamOpSign<ConvolutionParam> ConvSignature;
+
+static inline size_t GetInShapeSize(const ConvolutionParam &param_) {
+  return 2 + (param_.no_bias ? 0 : 1) + (param_.with_sum ? 1 : 0);
+}
 
 }  // namespace op
 }  // namespace mxnet
