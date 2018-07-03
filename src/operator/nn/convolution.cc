@@ -528,6 +528,17 @@ There are other options to tune the performance.
 .set_attr<FResourceRequest>("FResourceRequest", [](const NodeAttrs& n) {
   return std::vector<ResourceRequest>{ResourceRequest::kTempSpace};
 })
+
+.set_attr<nnvm::FInplaceOption>("FInplaceOption", [](const NodeAttrs& attrs) {
+  const ConvolutionParam& params = nnvm::get<ConvolutionParam>(attrs.parsed);
+  if (params.with_sum) {
+    int idx = static_cast<int>(conv::GetKsum(params.no_bias));
+    return std::vector<std::pair<int, int>>{std::pair<int, int>{idx, 0}};
+  } else {
+    return std::vector<std::pair<int, int>>();
+  }
+})
+
 .add_argument("data", "NDArray-or-Symbol", "Input data to the ConvolutionOp.")
 .add_argument("weight", "NDArray-or-Symbol", "Weight matrix.")
 .add_argument("bias", "NDArray-or-Symbol", "Bias parameter.")

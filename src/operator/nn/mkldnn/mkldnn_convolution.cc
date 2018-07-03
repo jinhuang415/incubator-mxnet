@@ -71,20 +71,19 @@ mkldnn::convolution_forward::primitive_desc GetConvFwdImpl(
     float alpha = 0.0f;            // negative slope for mkldnn_eltwise_relu.
     float beta = 1.0f;             // ignored for mkldnn_eltwise_relu.
     ops.append_eltwise(scale, eltwise_relu, alpha, beta);
-    attr.set_post_ops(ops);
   }
   if (param.with_sum) {
     float scale = 1.0f;
     ops.append_sum(scale);
+  }
+  attr.set_post_ops(ops);
+  if (param.with_postsum_relu) {
+    float scale = 1.0f;
+    float alpha = 0.0f;
+    float beta = 1.0f;
+    ops.append_eltwise(scale, eltwise_relu, alpha, beta);
     attr.set_post_ops(ops);
   }
-  // if (param.with_postsum_relu) {
-  //   float scale = 1.0f;
-  //   float alpha = 0.0f;
-  //   float beta = 1.0f;
-  //   ops.append_eltwise(scale, eltwise_relu, alpha, beta);
-  //   attr.set_post_ops(ops);
-  // }
   if (param.dilate.ndim() == 0 && bias == nullptr) {
     mkldnn::convolution_forward::desc desc(prop, mkldnn::algorithm::convolution_direct,
         data_md, weight_md, out_md, strides, padding, padding, mkldnn::padding_kind::zero);

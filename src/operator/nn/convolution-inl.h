@@ -67,6 +67,7 @@ struct ConvolutionParam : public dmlc::Parameter<ConvolutionParam> {
   uint64_t workspace;
   bool no_bias;
   bool with_sum;
+  bool with_postsum_relu;
   dmlc::optional<int> cudnn_tune;
   bool cudnn_off;
   dmlc::optional<int> layout;
@@ -97,6 +98,8 @@ struct ConvolutionParam : public dmlc::Parameter<ConvolutionParam> {
     .describe("Whether to disable bias parameter.");
     DMLC_DECLARE_FIELD(with_sum).set_default(false)
     .describe("Whether to enable convsum fusion.");
+    DMLC_DECLARE_FIELD(with_postsum_relu).set_default(false)
+    .describe("Whether to enable convsumrelu fusion.");
     DMLC_DECLARE_FIELD(cudnn_tune)
     .add_enum("off", conv::kOff)
     .add_enum("limited_workspace", conv::kLimited)
@@ -151,6 +154,7 @@ struct ConvolutionParam : public dmlc::Parameter<ConvolutionParam> {
            this->cudnn_off == other.cudnn_off &&
            this->with_relu == other.with_relu &&
            this->with_sum == other.with_sum &&
+           this->with_postsum_relu == other.with_postsum_relu &&
            this->layout == other.layout;
   }
 };
@@ -183,6 +187,7 @@ struct hash<mxnet::op::ConvolutionParam> {
     ret = dmlc::HashCombine(ret, val.cudnn_off);
     ret = dmlc::HashCombine(ret, val.with_relu);
     ret = dmlc::HashCombine(ret, val.with_sum);
+    ret = dmlc::HashCombine(ret, val.with_postsum_relu);
     ret = dmlc::HashCombine(ret, val.layout);
     /* This need to add int8 other params hash as well ??? */
     return ret;

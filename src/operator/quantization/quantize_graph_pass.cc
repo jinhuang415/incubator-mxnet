@@ -194,11 +194,12 @@ Graph QuantizeGraph(Graph &&src) {
       if (need_requantize_map.count(new_node->op()) > 0
           && need_requantize_map[new_node->op()](new_node->attrs)) {
         if (disable_requantize) {
-          if (!new_node->attrs.dict.count("with_relu")) {
+          if (new_node->attrs.dict.count("with_relu") 
+              || new_node->attrs.dict.count("with_postsum_relu")) {
             // Set quantized OP's out type to int8 if disable requantize
-            new_node->attrs.dict["out_type"] = "int8";
-          } else {
             new_node->attrs.dict["out_type"] = "uint8";
+          } else {
+            new_node->attrs.dict["out_type"] = "int8";
           }
         } else {
           NodePtr requantize_node = Node::Create();
@@ -305,7 +306,7 @@ Graph GraphFusionConvSum(Graph &src) {
         patten_match = true;
         mirror_node->attrs.dict["with_sum"] = "True";
         mirror_node->op()->attr_parser(&(mirror_node->attrs));
-        mirror_node->inputs.emplace_back(NodeEntry{node->inputs[1].node, e.index, e.version});
+        mirror_node->inputs.emplace_back(NodeEntry{mirror_map.at(node->inputs[1].node.get()), 0,0});
         // break here have problem?
         break;
       } else {
@@ -351,7 +352,16 @@ Graph GraphFusionConvRelu(Graph &src) {
         mirror_map[node.get()] = mirror_node;
         // assume only one match for all inputs
         patten_match = true;
-        mirror_node->attrs.dict["with_relu"] = "True";
+	auto iter = mirror_node->attrs.dict.find("with_sum");
+	if (iter != mirror_node->attrs.dict.end()) {
+	  if(iter->second == "True") {
+	    mirror_node->attrs.dict["with_postsum_relu"] = "True";
+	  } else{
+	    mirror_node->attrs.dict["with_relu"] = "True";
+	  }
+	} else {
+	  mirror_node->attrs.dict["with_relu"] = "True";
+	}
         mirror_node->op()->attr_parser(&(mirror_node->attrs));
         // break here have problem?
         break;

@@ -42,7 +42,7 @@ static void MKLDNNQuantizedConvForward(const nnvm::NodeAttrs& attrs,
     << "mkldnn_quantized_conv op only supports uint8 as input type";
   TmpMemMgr::Get()->Init(ctx.requested[conv::kTempSpace]);
   const ConvolutionParam& param = nnvm::get<ConvolutionParam>(attrs.parsed);
-  const size_t num_inputs = param.no_bias ? 2 : 3;
+  const size_t num_inputs = (param.no_bias ? 2 : 3) + (param.with_sum ? 1 : 0);
 
   float data_range, weight_range, out_range;
   float quantized_data_range, quantized_weight_range, quantized_out_range;
@@ -95,7 +95,8 @@ static void MKLDNNQuantizedConvForward(const nnvm::NodeAttrs& attrs,
   mkldnn_output_t out_mem;
   size_t sum_index;
   if (param.with_sum) {
-    sum_index = param.no_bias ? 6 : 9;
+    LOG(INFO) << "with sum: " << in_data[3].GetMKLDNNData()->get_primitive_desc().desc().data.format;
+    sum_index = param.no_bias ? 2 : 3;
     out_mem = mkldnn_output_t(OutDataOp::Noop, const_cast<mkldnn::memory *>(in_data[sum_index].GetMKLDNNData()));
   } else {
     out_mem = CreateMKLDNNMem(out_data[conv::kOut], fwd.fwd_pd.dst_primitive_desc(),
@@ -109,6 +110,7 @@ static void MKLDNNQuantizedConvForward(const nnvm::NodeAttrs& attrs,
 
   CommitOutput(out_data[conv::kOut], out_mem);
   MKLDNNStream::Get()->Submit();
+  LOG(INFO) << out_data[conv::kOut].GetMKLDNNData()->get_primitive_desc().desc().data.format;
   Stream<cpu> *s = ctx.get_stream<cpu>();
   if (param.min_calib_range.has_value() && param.max_calib_range.has_value()) {
     *out_data[1].data().dptr<float>() = param.min_calib_range.value();

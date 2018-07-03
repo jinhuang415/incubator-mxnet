@@ -38,7 +38,7 @@ bool QuantizedConvShape(const nnvm::NodeAttrs& attrs,
   const ConvolutionParam& param = nnvm::get<ConvolutionParam>(attrs.parsed);
   CHECK_EQ(param.num_group, 1U) << "quantized_conv only supports num_group=1 for now";
   if (param.with_sum) {
-    CHECK_EQ(in_shape->size(), param.no_bias? 7U : 10U);
+    CHECK_EQ(in_shape->size(), param.no_bias? 9U : 12U);
   } else {
     CHECK_EQ(in_shape->size(), param.no_bias? 6U : 9U);
   }
@@ -65,13 +65,13 @@ bool QuantizedConvShape(const nnvm::NodeAttrs& attrs,
   wshape[W] = param.kernel[1];
   wshape[C] = dshape[C];
   SHAPE_ASSIGN_CHECK(*in_shape, 1, wshape);
-  const int start = param.no_bias? 2 : 3;
-  const int end = param.no_bias? 6 : 9;
+  const int start = (param.no_bias? 2 : 3) + (param.with_sum? 1 : 0);
+  const int end = (param.no_bias? 6 : 9) + (param.with_sum? 3 : 0);
   for (int i = start; i < end; ++i) {
     SHAPE_ASSIGN_CHECK(*in_shape, i, TShape{1});
-    if (param.with_sum) {
-      SHAPE_ASSIGN_CHECK(*in_shape, end, (*out_shape)[0]);
-    }
+  }
+  if (param.with_sum) {
+    SHAPE_ASSIGN_CHECK(*in_shape, end, (*out_shape)[0])
   }
   if (!param.no_bias) {
     SHAPE_ASSIGN_CHECK(*in_shape, 2, Shape1(param.num_filter));
@@ -94,7 +94,11 @@ bool QuantizedConvType(const nnvm::NodeAttrs& attrs,
                        std::vector<int> *in_type,
                        std::vector<int> *out_type) {
   const ConvolutionParam& param = nnvm::get<ConvolutionParam>(attrs.parsed);
-  CHECK_EQ(in_type->size(), param.no_bias? 6U : 9U);
+  if (param.with_sum) {
+    CHECK_EQ(in_type->size(), param.no_bias? 9U : 12U);
+  } else {
+    CHECK_EQ(in_type->size(), param.no_bias? 6U : 9U);
+  }
   CHECK_EQ(out_type->size(), 3U);
 #ifndef MXNET_USE_MKLDNN
   TYPE_ASSIGN_CHECK(*in_type, 0, mshadow::kInt8);
@@ -103,16 +107,9 @@ bool QuantizedConvType(const nnvm::NodeAttrs& attrs,
   if (!param.no_bias) {
     TYPE_ASSIGN_CHECK(*in_type, 2, mshadow::kInt8);
   }
-  if (param.with_sum) {
-    if (param.no_bias) {
-      TYPE_ASSIGN_CHECK(*in_type, 7, mshadow::kInt32);
-    } else {
-      TYPE_ASSIGN_CHECK(*in_type, 10, mshadow::kInt32);
-    }
-  }
-  const size_t start = param.no_bias? 2 : 3;
-  const size_t end = param.no_bias? 6 : 9;
-  for (size_t i = start; i < end; ++i) {
+  const int start = (param.no_bias? 2 : 3) + (param.with_sum? 1 : 0);
+  const int end = (param.no_bias? 6 : 9) + (param.with_sum? 3 : 0);
+  for (int i = start; i < end; ++i) {
     TYPE_ASSIGN_CHECK(*in_type, i, mshadow::kFloat32);
   }
 
@@ -157,7 +154,7 @@ and max thresholds representing the threholds for quantizing the float32 output 
   [](const NodeAttrs& attrs) {
     const ConvolutionParam& param = nnvm::get<ConvolutionParam>(attrs.parsed);
     if (param.with_sum) {
-      return param.no_bias? 7 : 10;
+      return param.no_bias? 9 : 12;
     } else {
       return param.no_bias? 6 : 9;
     }
@@ -169,11 +166,11 @@ and max thresholds representing the threholds for quantizing the float32 output 
     const ConvolutionParam& param = nnvm::get<ConvolutionParam>(attrs.parsed);
     if (param.with_sum) {
       if (param.no_bias) {
-        return std::vector<std::string>{"data", "weight", "min_data", "max_data",
-                                        "min_weight", "max_weight", "sum_input"};
+        return std::vector<std::string>{"data", "weight", "sum_input", "min_data", "max_data",
+                                        "min_weight", "max_weight", "sum_input_min", "sum_input_max"};
       } else {
-        return std::vector<std::string>{"data", "weight", "bias", "min_data", "max_data",
-                                        "min_weight", "max_weight", "min_bias", "max_bias", "sum_input"};
+        return std::vector<std::string>{"data", "weight", "bias", "sum_input", "min_data", "max_data",
+                                        "min_weight", "max_weight", "min_bias", "max_bias", "sum_input_min", "sum_input_max"};
       }
     } else {
       if (param.no_bias) {
@@ -196,17 +193,28 @@ and max thresholds representing the threholds for quantizing the float32 output 
   [](const NodeAttrs& attrs) {
     return std::vector<ResourceRequest>(1, ResourceRequest::kTempSpace);
   })
+.set_attr<nnvm::FInplaceOption>("FInplaceOption", [](const NodeAttrs& attrs) {
+  const ConvolutionParam& params = nnvm::get<ConvolutionParam>(attrs.parsed);
+  if (params.with_sum) {
+    return std::vector<std::pair<int, int>>{std::pair<int, int>{3, 0}};//params.no_bias? 2 : 3, 0}};
+  } else {
+    return std::vector<std::pair<int, int>>();
+  }
+})
+
 .set_attr<FNeedRequantize>("FNeedRequantize", [](const NodeAttrs& attrs) { return true; })
 .add_argument("data", "NDArray-or-Symbol", "Input data.")
 .add_argument("weight", "NDArray-or-Symbol", "weight.")
 .add_argument("bias", "NDArray-or-Symbol", "bias.")
+.add_argument("sum_input", "NDArray-or-Symbol", "conv_sum fusion data.")
 .add_argument("min_data", "NDArray-or-Symbol", "Minimum value of data.")
 .add_argument("max_data", "NDArray-or-Symbol", "Maximum value of data.")
 .add_argument("min_weight", "NDArray-or-Symbol", "Minimum value of weight.")
 .add_argument("max_weight", "NDArray-or-Symbol", "Maximum value of weight.")
 .add_argument("min_bias", "NDArray-or-Symbol", "Minimum value of bias.")
 .add_argument("max_bias", "NDArray-or-Symbol", "Maximum value of bias.")
-.add_argument("sum_input", "NDArray-or-Symbol", "conv_sum fusion.")
+.add_argument("sum_input_min", "NDArray-or-Symbol", "conv_sum fusion data min.")
+.add_argument("sum_input_max", "NDArray-or-Symbol", "conv_sum fusion data max.")
 .add_arguments(ConvolutionParam::__FIELDS__());
 
 NNVM_REGISTER_OP(Convolution)
