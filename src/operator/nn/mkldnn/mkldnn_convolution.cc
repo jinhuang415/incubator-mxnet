@@ -45,7 +45,7 @@ mkldnn::convolution_forward::primitive_desc GetConvFwdImpl(
     const NDArray &weights, const NDArray *bias, const NDArray &output,
     const float scale) {
   auto prop = is_train ? mkldnn::prop_kind::forward_training : mkldnn::prop_kind::forward_scoring;
-  auto data_md = GetMemDesc(data);
+  auto data_md = GetInDataMemDesc(data);
   auto weight_md = GetWeightDesc(weights, param.num_group);
   auto out_md = GetMemDesc(output);
   auto engine = CpuEngine::Get()->get_engine();

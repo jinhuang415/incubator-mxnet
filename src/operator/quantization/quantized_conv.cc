@@ -113,7 +113,11 @@ bool QuantizedConvType(const nnvm::NodeAttrs& attrs,
     TYPE_ASSIGN_CHECK(*in_type, i, mshadow::kFloat32);
   }
 
-  if (param.out_type.has_value()) {
+  // if convolution have sum fusion, set out type to be the same with the other
+  // sum input type to comply with mxnet inplace operation requirement
+  if (param.with_sum) {
+    TYPE_ASSIGN_CHECK(*out_type, 0, (*in_type)[param.no_bias ? 2 : 3]);
+  } else if (param.out_type.has_value()) {
     TYPE_ASSIGN_CHECK(*out_type, 0, param.out_type.value());
   } else {
     TYPE_ASSIGN_CHECK(*out_type, 0, mshadow::kInt32);
@@ -193,6 +197,14 @@ and max thresholds representing the threholds for quantizing the float32 output 
   [](const NodeAttrs& attrs) {
     return std::vector<ResourceRequest>(1, ResourceRequest::kTempSpace);
   })
+.set_attr<nnvm::FInplaceOption>("FInplaceOption", [](const NodeAttrs& attrs) {
+  const ConvolutionParam& params = nnvm::get<ConvolutionParam>(attrs.parsed);
+  if (params.with_sum) {
+    return std::vector<std::pair<int, int>>{std::pair<int, int>{3, 0}};//params.no_bias? 2 : 3, 0}};
+  } else {
+    return std::vector<std::pair<int, int>>();
+  }
+})
 
 .set_attr<FNeedRequantize>("FNeedRequantize", [](const NodeAttrs& attrs) { return true; })
 .add_argument("data", "NDArray-or-Symbol", "Input data.")

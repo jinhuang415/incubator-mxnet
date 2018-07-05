@@ -30,6 +30,7 @@
 #include "../quantization_utils.h"
 #include "../../tensor/matrix_op-inl.h"
 #include "../../elemwise_op_common.h"
+#include "../../../operator/nn/mkldnn/mkldnn_base-inl.h"
 namespace mxnet {
 namespace op {
 
@@ -38,8 +39,8 @@ static void MKLDNNQuantizedConvForward(const nnvm::NodeAttrs& attrs,
                                 const std::vector<NDArray> &in_data,
                                 const std::vector<OpReqType> &req,
                                 const std::vector<NDArray> &out_data) {
-  CHECK_EQ(in_data[0].dtype(), mshadow::kUint8)
-    << "mkldnn_quantized_conv op only supports uint8 as input type";
+  CHECK(in_data[0].dtype() == mshadow::kUint8 || in_data[0].dtype() == mshadow::kInt8)
+    << "mkldnn_quantized_conv op only supports uint8 or int8 as input type";
   TmpMemMgr::Get()->Init(ctx.requested[conv::kTempSpace]);
   const ConvolutionParam& param = nnvm::get<ConvolutionParam>(attrs.parsed);
   const size_t num_inputs = (param.no_bias ? 2 : 3) + (param.with_sum ? 1 : 0);
@@ -77,7 +78,15 @@ static void MKLDNNQuantizedConvForward(const nnvm::NodeAttrs& attrs,
       param.no_bias ? nullptr : &in_data[conv::kBias], out_data[conv::kOut],
       conv_scale);
 
-  auto data_mem = in_data[conv::kData].GetMKLDNNDataReorder(fwd.fwd_pd.src_primitive_desc());
+  const mkldnn::memory *data_mem = nullptr;
+  // If input is int8 and previous OP is conv+sum+relu fusion OP, then treat
+  // the input data as uint8 directly so don't need to do the real reorder
+  if (in_data[conv::kData].dtype() == mshadow::kInt8 && param.with_convsumrelu_in) {
+    const mkldnn::memory *mem = in_data[conv::kData].GetMKLDNNData();
+    data_mem = GetMKLDNNExact(mem, fwd.fwd_pd.src_primitive_desc());
+  } else {
+    data_mem = in_data[conv::kData].GetMKLDNNDataReorder(fwd.fwd_pd.src_primitive_desc());
+  }
   const mkldnn::memory *weight_mem;
   // For inference, we want to reorder the weight array so we don't need to
   // reorder data every time.
@@ -90,8 +99,15 @@ static void MKLDNNQuantizedConvForward(const nnvm::NodeAttrs& attrs,
     weight_mem = weight.GetMKLDNNData();
     CHECK(weight_mem->get_primitive_desc() == fwd.fwd_pd.weights_primitive_desc());
   }
-  auto out_mem = CreateMKLDNNMem(out_data[conv::kOut], fwd.fwd_pd.dst_primitive_desc(),
-                                 req[conv::kOut]);
+  mkldnn_output_t out_mem;
+  size_t sum_index;
+  if (param.with_sum) {
+    sum_index = param.no_bias ? 2 : 3;
+    out_mem = mkldnn_output_t(OutDataOp::Noop, const_cast<mkldnn::memory *>(in_data[sum_index].GetMKLDNNData()));
+  } else {
+    out_mem = CreateMKLDNNMem(out_data[conv::kOut], fwd.fwd_pd.dst_primitive_desc(),
+                              req[conv::kOut]);
+  }
   const mkldnn::memory *bias_mem = nullptr;
   if (!param.no_bias)
     bias_mem = in_data[conv::kBias].GetMKLDNNDataReorder(fwd.fwd_pd.bias_primitive_desc());

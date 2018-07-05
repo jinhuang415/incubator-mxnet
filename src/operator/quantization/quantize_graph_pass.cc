@@ -452,11 +452,47 @@ Graph GraphFusionConvBN(Graph &src) {
   return ret;
 }
 
+Graph GraphFusionAddSumFlag(Graph &src) {
+  std::unordered_map<Node*, NodePtr> mirror_map;
+  DFSVisit(src.outputs, [&](const NodePtr& node) {
+    // for one node, create a new node as mirror node, and then go through 
+    // the node's each input node, if the input node and current node doesn't
+    // form a fusion pattern, then add the input node's mirror node to this
+    // node's input, otherwise
+    NodePtr new_node = Node::Create();
+    *new_node = *node;
+    new_node->inputs.clear();
+    for (const auto& e : node->inputs) {
+      NodePtr mirror_node = mirror_map.at(e.node.get());
+      if (e.node->op() != nullptr && e.node->op()->name == "Convolution"
+             && e.node->attrs.dict["with_sum"] == "True"
+             && e.node->attrs.dict["with_postsum_relu"] == "True"
+             && node->op() != nullptr && node->op()->name == "Convolution") {
+	    new_node->attrs.dict["with_convsumrelu_in"] = "True";
+        new_node->op()->attr_parser(&(new_node->attrs));
+      }
+      NodeEntry mirror_entry = NodeEntry{mirror_node, e.index, e.version};
+      new_node->inputs.emplace_back(NodeEntry{mirror_node, e.index, e.version});
+    }
+    mirror_map[node.get()] = std::move(new_node);
+  });
+
+  std::vector<NodeEntry> outputs;
+  for (const auto& e : src.outputs) {
+    outputs.emplace_back(NodeEntry{mirror_map.at(e.node.get()), e.index, e.version});
+  }
+
+  Graph ret;
+  ret.outputs = std::move(outputs);
+  return ret;
+}
+
 Graph FuseGraph(Graph &&src) {
   Graph fused_graph = GraphFusionConvBN(src);
   fused_graph = GraphFusionConvRelu(fused_graph);
   fused_graph = GraphFusionConvSum(fused_graph);
   fused_graph = GraphFusionConvRelu(fused_graph);
+  fused_graph = GraphFusionAddSumFlag(fused_graph);
   return fused_graph;
 }
 
