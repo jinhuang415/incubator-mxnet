@@ -105,7 +105,8 @@ bool QuantizedConvType(const nnvm::NodeAttrs& attrs,
 #endif
   TYPE_ASSIGN_CHECK(*in_type, 1, mshadow::kInt8);
   if (!param.no_bias) {
-    TYPE_ASSIGN_CHECK(*in_type, 2, mshadow::kInt8);
+    // TYPE_ASSIGN_CHECK(*in_type, 2, mshadow::kInt8);
+    TYPE_ASSIGN_CHECK(*in_type, 2, mshadow::kInt32);
   }
   const int start = (param.no_bias? 2 : 3) + (param.with_sum? 1 : 0);
   const int end = (param.no_bias? 6 : 9) + (param.with_sum? 3 : 0);
