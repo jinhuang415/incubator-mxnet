@@ -179,6 +179,21 @@ static inline mkldnn::memory::data_type get_mkldnn_type(int dtype) {
   }
 }
 
+inline static mkldnn::memory::desc GetInDataMemDesc(const NDArray &arr) {
+  mkldnn::memory::dims dims(arr.shape().ndim());
+  for (size_t i = 0; i < dims.size(); i++) dims[i] = arr.shape()[i];
+  int mkldnn_dtype;
+  // For INT8 case, currently we only support uint8 as input data so need
+  // to create the memory primitive of uint8 type
+  if (arr.dtype() == mshadow::kInt8) {
+    mkldnn_dtype = mshadow::kUint8;
+  } else {
+    mkldnn_dtype = arr.dtype();
+  }
+  return mkldnn::memory::desc{dims, get_mkldnn_type(mkldnn_dtype),
+                              mkldnn::memory::format::any};
+}
+
 inline static mkldnn::memory::desc GetMemDesc(const NDArray &arr, int ndim) {
   mkldnn::memory::dims dims(ndim);
   for (size_t i = 0; i < dims.size(); i++) dims[i] = arr.shape()[i];
@@ -356,6 +371,23 @@ mkldnn_memory_format_t GetDefaultFormat(const mkldnn::memory::desc &desc);
 mkldnn_memory_format_t GetDefaultFormat(int num_dims);
 mkldnn::memory::primitive_desc GetPrimitiveDesc(mkldnn::memory::primitive_desc pd,
                                                 mkldnn_memory_format_t format);
+/*
+ * Here we want to get MKLDNN memory whose primitive desc is exactly the same as
+ * the given one. operator== can't guarantee that. == can return true even if
+ * the formats are different. I need to double check its format.
+ */
+static inline mkldnn::memory *GetMKLDNNExact(
+    const mkldnn::memory *mem, mkldnn::memory::primitive_desc desc) {
+  mkldnn::memory::primitive_desc src_desc = mem->get_primitive_desc();
+  if (desc == src_desc && desc.desc().data.format == src_desc.desc().data.format) {
+    return const_cast<mkldnn::memory *>(mem);
+  } else {
+    std::shared_ptr<mkldnn::memory> ret(new mkldnn::memory(
+            desc, mem->get_data_handle()));
+    MKLDNNStream::Get()->RegisterMem(ret);
+    return ret.get();
+  }
+}
 
 inline bool same_shape(const TShape &shape, const mkldnn_dims_t dims, int ndims) {
   if (shape.ndim() != (size_t)ndims)

@@ -72,6 +72,7 @@ struct ConvolutionParam : public dmlc::Parameter<ConvolutionParam> {
   bool cudnn_off;
   dmlc::optional<int> layout;
   bool with_relu;
+  bool with_convsumrelu_in;
   // below 3 params are optional parameters to support INT8 quantization
   dmlc::optional<int> out_type;  // quantized conv output type
   dmlc::optional<float> min_calib_range;  // min float value calculated from calibration dataset
@@ -100,6 +101,8 @@ struct ConvolutionParam : public dmlc::Parameter<ConvolutionParam> {
     .describe("Whether to enable convsum fusion.");
     DMLC_DECLARE_FIELD(with_postsum_relu).set_default(false)
     .describe("Whether to enable convsumrelu fusion.");
+    DMLC_DECLARE_FIELD(with_convsumrelu_in).set_default(false)
+    .describe("Whether previous OP is conv+sum+relu fusion OP.");
     DMLC_DECLARE_FIELD(cudnn_tune)
     .add_enum("off", conv::kOff)
     .add_enum("limited_workspace", conv::kLimited)
@@ -155,6 +158,7 @@ struct ConvolutionParam : public dmlc::Parameter<ConvolutionParam> {
            this->with_relu == other.with_relu &&
            this->with_sum == other.with_sum &&
            this->with_postsum_relu == other.with_postsum_relu &&
+           this->with_convsumrelu_in == other.with_convsumrelu_in &&
            this->layout == other.layout;
   }
 };
@@ -188,6 +192,7 @@ struct hash<mxnet::op::ConvolutionParam> {
     ret = dmlc::HashCombine(ret, val.with_relu);
     ret = dmlc::HashCombine(ret, val.with_sum);
     ret = dmlc::HashCombine(ret, val.with_postsum_relu);
+    ret = dmlc::HashCombine(ret, val.with_convsumrelu_in);
     ret = dmlc::HashCombine(ret, val.layout);
     /* This need to add int8 other params hash as well ??? */
     return ret;

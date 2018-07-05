@@ -113,7 +113,11 @@ bool QuantizedConvType(const nnvm::NodeAttrs& attrs,
     TYPE_ASSIGN_CHECK(*in_type, i, mshadow::kFloat32);
   }
 
-  if (param.out_type.has_value()) {
+  // if convolution have sum fusion, set out type to be the same with the other
+  // sum input type to comply with mxnet inplace operation requirement
+  if (param.with_sum) {
+    TYPE_ASSIGN_CHECK(*out_type, 0, (*in_type)[param.no_bias ? 2 : 3]);
+  } else if (param.out_type.has_value()) {
     TYPE_ASSIGN_CHECK(*out_type, 0, param.out_type.value());
   } else {
     TYPE_ASSIGN_CHECK(*out_type, 0, mshadow::kInt32);
