@@ -47,7 +47,9 @@ static void MKLDNNQuantizedConvForward(const nnvm::NodeAttrs& attrs,
 
   float data_range, weight_range, out_range;
   float quantized_data_range, quantized_weight_range, quantized_out_range;
-  float data_scale, weight_scale, out_scale, conv_scale;
+  float data_scale, weight_scale, out_scale;
+  float conv_scale = MKLDNNConvForward::NO_SCALE;
+  float postsum_scale = MKLDNNConvForward::NO_SCALE;
   if (param.min_calib_range.has_value() && param.max_calib_range.has_value()) {
     using red::limits::MaxValue;
     using red::limits::MinValue;
@@ -68,15 +70,22 @@ static void MKLDNNQuantizedConvForward(const nnvm::NodeAttrs& attrs,
     weight_scale = quantized_weight_range / weight_range;
     out_scale = quantized_out_range / out_range;
     conv_scale = out_scale / data_scale / weight_scale;
-  } else {
-    conv_scale = MKLDNNConvForward::NO_SCALE;
+
+    if (param.with_sum) {
+      float sum_range;
+      size_t sum_index = param.no_bias ? 2 : 3;
+      sum_range = MaxAbs(*in_data[sum_index+1].data().dptr<float>(),
+                        *in_data[sum_index+2].data().dptr<float>());
+      postsum_scale = out_range/sum_range;
+      std::cout << "post scale = " << postsum_scale << std::endl;
+    }
   }
 
   NDArray weight = in_data[conv::kWeight];
   MKLDNNConvForward &fwd = GetConvFwd(attrs, ctx.is_train,
       in_data[conv::kData], weight,
       param.no_bias ? nullptr : &in_data[conv::kBias], out_data[conv::kOut],
-      conv_scale);
+      conv_scale, postsum_scale);
 
   const mkldnn::memory *data_mem = nullptr;
   // If input is int8 and previous OP is conv+sum+relu fusion OP, then treat
@@ -100,9 +109,8 @@ static void MKLDNNQuantizedConvForward(const nnvm::NodeAttrs& attrs,
     CHECK(weight_mem->get_primitive_desc() == fwd.fwd_pd.weights_primitive_desc());
   }
   mkldnn_output_t out_mem;
-  size_t sum_index;
   if (param.with_sum) {
-    sum_index = param.no_bias ? 2 : 3;
+    size_t sum_index = param.no_bias ? 2 : 3;
     out_mem = mkldnn_output_t(OutDataOp::Noop, const_cast<mkldnn::memory *>(in_data[sum_index].GetMKLDNNData()));
   } else {
     out_mem = CreateMKLDNNMem(out_data[conv::kOut], fwd.fwd_pd.dst_primitive_desc(),

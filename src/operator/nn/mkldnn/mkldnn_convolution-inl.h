@@ -38,7 +38,7 @@ namespace op {
 mkldnn::convolution_forward::primitive_desc GetConvFwdImpl(
     const ConvolutionParam& param, const bool is_train, const NDArray &data,
     const NDArray &weights, const NDArray *bias, const NDArray &output,
-    const float scale);
+    const float scale, const float sum_scale);
 
 class MKLDNNConvForward {
  public:
@@ -48,9 +48,9 @@ class MKLDNNConvForward {
   MKLDNNConvForward(const ConvolutionParam& param, const bool is_train,
                     const NDArray &data, const NDArray &weights,
                     const NDArray *bias, const NDArray &output,
-                    const float scale): fwd_pd(
+                    const float scale, const float sum_scale): fwd_pd(
                         GetConvFwdImpl(param, is_train, data,
-                                       weights, bias, output, scale)) {
+                                       weights, bias, output, scale, sum_scale)) {
   }
 
   void SetNewMem(const mkldnn::memory &data, const mkldnn::memory &weight,
@@ -72,7 +72,8 @@ typedef ParamOpSign<ConvolutionParam> MKLDNNConvSignature;
 
 MKLDNNConvForward &GetConvFwd(const nnvm::NodeAttrs& attrs,
     const bool is_train, const NDArray &data, const NDArray &weights,
-    const NDArray *bias, const NDArray &output, const float scale);
+    const NDArray *bias, const NDArray &output, 
+    const float scale, const float sum_scale);
 
 }  // namespace op
 }  // namespace mxnet
