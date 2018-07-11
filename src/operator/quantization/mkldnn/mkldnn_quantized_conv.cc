@@ -49,7 +49,7 @@ static void MKLDNNQuantizedConvForward(const nnvm::NodeAttrs& attrs,
   float quantized_data_range, quantized_weight_range, quantized_out_range;
   float data_scale, weight_scale, out_scale;
   float conv_scale = MKLDNNConvForward::NO_SCALE;
-  float postsum_scale = MKLDNNConvForward::NO_SCALE;
+  float postsum_scale = 1.0f;
   if (param.min_calib_range.has_value() && param.max_calib_range.has_value()) {
     using red::limits::MaxValue;
     using red::limits::MinValue;
@@ -76,7 +76,7 @@ static void MKLDNNQuantizedConvForward(const nnvm::NodeAttrs& attrs,
       size_t sum_index = param.no_bias ? 2 : 3;
       sum_range = MaxAbs(*in_data[sum_index+1].data().dptr<float>(),
                         *in_data[sum_index+2].data().dptr<float>());
-      postsum_scale = out_range/sum_range;
+      postsum_scale = sum_range/out_range;
       std::cout << "post scale = " << postsum_scale << std::endl;
     }
   }
