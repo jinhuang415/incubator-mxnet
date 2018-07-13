@@ -32,7 +32,7 @@ from numpy.testing import assert_allclose
 
 curr_path = os.path.dirname(os.path.abspath(os.path.expanduser(__file__)))
 sys.path.insert(0, os.path.join(curr_path, '../unittest'))
-from common import setup_module, with_seed, teardown
+from common import setup_module, with_seed, teardown, assert_raises_cudnn_disabled
 from test_operator import *
 from test_optimizer import *
 from test_random import *
@@ -87,6 +87,8 @@ def check_countsketch(in_dim,out_dim,n):
                 a[j,i] = out_grad.asnumpy()[j, h[0,i]] * s[0,i]
     assert_almost_equal(a,arr_grad[0].asnumpy(),rtol=1e-3, atol=1e-12)
 
+
+@unittest.skip("test fails intermittently. temporarily disabled till it gets fixed. tracked at https://github.com/apache/incubator-mxnet/issues/10988")
 @with_seed(0)
 def test_countsketch():
     nrepeat = 2
@@ -279,21 +281,21 @@ def test_batchnorm_with_type():
   ]
 
   ctx_list_v2_2D = [
-    {'ctx': mx.cpu(0), 'norm_data': (10, 2, 10, 10), 'type_dict': {'norm_data': np.float32}},
-    {'ctx': mx.cpu(0), 'norm_data': (10, 2, 10, 10), 'type_dict': {'norm_data': np.float16}},
-    {'ctx': mx.cpu(0), 'norm_data': (10, 2, 10, 10), 'type_dict': {'norm_data': np.float64}},
-    {'ctx': mx.gpu(0), 'norm_data': (10, 2, 10, 10), 'type_dict': {'norm_data': np.float32}},
-    {'ctx': mx.gpu(0), 'norm_data': (10, 2, 10, 10), 'type_dict': {'norm_data': np.float16}},
-    {'ctx': mx.gpu(0), 'norm_data': (10, 2, 10, 10), 'type_dict': {'norm_data': np.float64}},
+    {'ctx': mx.cpu(0), 'norm_data': (5, 2, 5, 5), 'type_dict': {'norm_data': np.float32}},
+    {'ctx': mx.cpu(0), 'norm_data': (5, 2, 5, 5), 'type_dict': {'norm_data': np.float16}},
+    {'ctx': mx.cpu(0), 'norm_data': (5, 2, 5, 5), 'type_dict': {'norm_data': np.float64}},
+    {'ctx': mx.gpu(0), 'norm_data': (5, 2, 5, 5), 'type_dict': {'norm_data': np.float32}},
+    {'ctx': mx.gpu(0), 'norm_data': (5, 2, 5, 5), 'type_dict': {'norm_data': np.float16}},
+    {'ctx': mx.gpu(0), 'norm_data': (5, 2, 5, 5), 'type_dict': {'norm_data': np.float64}},
   ]
 
   ctx_list_v2_1D = [
-    {'ctx': mx.cpu(0), 'norm_data': (10, 2, 10), 'type_dict': {'norm_data': np.float16}},
-    {'ctx': mx.cpu(0), 'norm_data': (10, 2, 10), 'type_dict': {'norm_data': np.float32}},
-    {'ctx': mx.cpu(0), 'norm_data': (10, 2, 10), 'type_dict': {'norm_data': np.float64}},
-    {'ctx': mx.gpu(0), 'norm_data': (10, 2, 10), 'type_dict': {'norm_data': np.float16}},
-    {'ctx': mx.gpu(0), 'norm_data': (10, 2, 10), 'type_dict': {'norm_data': np.float32}},
-    {'ctx': mx.gpu(0), 'norm_data': (10, 2, 10), 'type_dict': {'norm_data': np.float64}},
+    {'ctx': mx.cpu(0), 'norm_data': (5, 2, 5), 'type_dict': {'norm_data': np.float16}},
+    {'ctx': mx.cpu(0), 'norm_data': (5, 2, 5), 'type_dict': {'norm_data': np.float32}},
+    {'ctx': mx.cpu(0), 'norm_data': (5, 2, 5), 'type_dict': {'norm_data': np.float64}},
+    {'ctx': mx.gpu(0), 'norm_data': (5, 2, 5), 'type_dict': {'norm_data': np.float16}},
+    {'ctx': mx.gpu(0), 'norm_data': (5, 2, 5), 'type_dict': {'norm_data': np.float32}},
+    {'ctx': mx.gpu(0), 'norm_data': (5, 2, 5), 'type_dict': {'norm_data': np.float64}},
   ]
 
   ctx_list_v2_3D = [
@@ -420,6 +422,7 @@ def test_batchnorm_versions():
 
 
 @with_seed(1234)
+@assert_raises_cudnn_disabled()
 def test_convolution_with_type():
     sym1 = mx.sym.Convolution(num_filter=3, kernel=(3,3), name='conv')
 
@@ -458,8 +461,10 @@ def test_convolution_with_type():
 def check_consistency_NxM(sym_list, ctx_list):
     # e.g. if sym_list=[sym1, sym2] and ctx_list=[ctx1, ctx2, ctx3], then resulting lists are:
     # sym_list=[sym1, sym1, sym1, sym2, sym2, sym2] and ctx_list=[ctx1, ctx2, ctx3, ctx1, ctx2, ctx3]
-    check_consistency(np.repeat(sym_list, len(ctx_list)), ctx_list * len(sym_list))
+    check_consistency(np.repeat(sym_list, len(ctx_list)), ctx_list * len(sym_list), scale=0.5)
 
+
+@unittest.skip("test fails intermittently. temporarily disabled till it gets fixed. tracked at https://github.com/apache/incubator-mxnet/issues/10141")
 @with_seed()
 def test_convolution_options():
     # 1D convolution
@@ -697,8 +702,7 @@ def test_grid_generator_with_type():
     check_consistency(sym, ctx_list, grad_req="add")
 
 
-@unittest.skip("test fails intermittently. temporarily disabled till it gets fixed. tracked at https://github.com/apache/incubator-mxnet/issues/7645")
-@with_seed(1234)
+@with_seed()
 def test_spatial_transformer_with_type():
     data = mx.sym.Variable('data')
     loc = mx.sym.Flatten(data)
@@ -707,8 +711,8 @@ def test_spatial_transformer_with_type():
     loc = mx.sym.FullyConnected(data=loc, num_hidden=6)
     sym = mx.sym.SpatialTransformer(data=data, loc=loc, target_shape=(10, 10),
                                     transform_type="affine", sampler_type="bilinear")
-    ctx_list = [{'ctx': mx.gpu(0), 'data': (1, 5, 10, 10), 'type_dict': {'data': np.float32}},
-                {'ctx': mx.cpu(0), 'data': (1, 5, 10, 10), 'type_dict': {'data': np.float32}}]
+    ctx_list = [{'ctx': mx.gpu(0), 'data': (1, 5, 10, 10), 'type_dict': {'data': np.float64}},
+                {'ctx': mx.cpu(0), 'data': (1, 5, 10, 10), 'type_dict': {'data': np.float64}}]
     check_consistency(sym, ctx_list)
     check_consistency(sym, ctx_list, grad_req="add")
 
@@ -738,6 +742,7 @@ def test_pooling_with_type():
     check_consistency(sym, ctx_list)
 
 
+@unittest.skip("Flaky test https://github.com/apache/incubator-mxnet/issues/11517")
 @with_seed()
 def test_pooling_versions():
     def test_pooling_versions_helper(pool_op_list, data, kernel, pool_type, pad, stride, pooling_convention='valid',
@@ -1230,7 +1235,6 @@ def test_embedding_with_type():
     test_embedding_helper(data_types, weight_types, 0, 5)
 
 
-@unittest.skip("test fails intermittently. temporarily disabled till it gets fixed. tracked at https://github.com/apache/incubator-mxnet/issues/8288")
 @with_seed()
 def test_svmoutput_with_type():
     sym = mx.sym.SVMOutput(name='svmoutput', use_linear=True)
@@ -1240,7 +1244,7 @@ def test_svmoutput_with_type():
                 {'ctx': mx.cpu(0), 'svmoutput_data': (20, 10), 'type_dict': {'svmoutput_data': np.float64}},
                 {'ctx': mx.cpu(0), 'svmoutput_data': (20, 10), 'type_dict': {'svmoutput_data': np.float32}},
                 {'ctx': mx.cpu(0), 'svmoutput_data': (20, 10), 'type_dict': {'svmoutput_data': np.float16}}]
-    check_consistency(sym, ctx_list)
+    check_consistency(sym, ctx_list, use_uniform=True)
 
 
 @with_seed()
@@ -1313,6 +1317,7 @@ def check_rnn_consistency(cell1, cell2):
     assert_allclose(mod1.get_outputs()[0].asnumpy(), mod2.get_outputs()[0].asnumpy(), rtol=1e-2, atol=1e-4)
 
 @with_seed()
+@assert_raises_cudnn_disabled()
 def test_rnn():
     fused = mx.rnn.FusedRNNCell(100, num_layers=2, mode='rnn_relu', prefix='')
 
@@ -1324,6 +1329,7 @@ def test_rnn():
     check_rnn_consistency(stack, fused)
 
 @with_seed()
+@assert_raises_cudnn_disabled()
 def test_lstm_forget_bias():
     forget_bias = 2.0
     fused = mx.rnn.FusedRNNCell(10, forget_bias=forget_bias, num_layers=2, mode='lstm', prefix='')
@@ -1345,6 +1351,7 @@ def test_lstm_forget_bias():
     assert_allclose(args[bias_name].asnumpy(), expected_bias)
 
 @with_seed()
+@assert_raises_cudnn_disabled()
 def test_gru():
     fused = mx.rnn.FusedRNNCell(100, num_layers=2, mode='gru', prefix='')
 
@@ -1356,6 +1363,7 @@ def test_gru():
     check_rnn_consistency(stack, fused)
 
 @with_seed()
+@assert_raises_cudnn_disabled()
 def test_bidirectional():
     fused = mx.rnn.FusedRNNCell(100, num_layers=2, mode='gru', prefix='',
             bidirectional=True)
@@ -1374,6 +1382,7 @@ def test_bidirectional():
     check_rnn_consistency(stack, fused)
 
 @with_seed()
+@assert_raises_cudnn_disabled()
 def test_unfuse():
     for mode in ['rnn_tanh', 'rnn_relu', 'lstm', 'gru']:
         fused = mx.rnn.FusedRNNCell(
@@ -1480,6 +1489,8 @@ def test_deformable_convolution_with_type():
 
 @with_seed()
 def test_deformable_convolution_options():
+    tol = {np.dtype(np.float32): 1e-1,
+           np.dtype(np.float64): 1e-3}
     # 2D convolution
 
     # Pad > 0
@@ -1492,13 +1503,9 @@ def test_deformable_convolution_options():
                  'deformable_conv_data': (2, 2, 7, 7),
                  'deformable_conv_offset': (2, 18, 7, 7),
                  'type_dict': {'deformable_conv_data': np.float32, 'deformable_conv_offset': np.float32}},
-                # {'ctx': mx.gpu(0),
-                #  'deformable_conv_data': (2, 2, 7, 7),
-                #  'deformable_offset': (2, 18, 7, 7),
-                #  'type_dict': {'deformable_conv_data': np.float16, 'deformable_offset': np.float16}},
                 ]
     sym = mx.sym.contrib.DeformableConvolution(num_filter=3, kernel=(3,3), pad=(1,1), name='deformable_conv')
-    check_consistency(sym, ctx_list)
+    check_consistency(sym, ctx_list, scale=0.1, tol=tol)
 
     # Stride > 1
     # since atomicAdd does not support fp16 (which deformable conv uses in backward), we do not test fp16 here
@@ -1510,13 +1517,9 @@ def test_deformable_convolution_options():
                  'deformable_conv_data': (2, 2, 7, 7),
                  'deformable_conv_offset': (2, 18, 3, 3),
                  'type_dict': {'deformable_conv_data': np.float32, 'deformable_conv_offset': np.float32}},
-                # {'ctx': mx.gpu(0),
-                #  'deformable_conv_data': (2, 2, 7, 7),
-                # 'deformable_conv_offset': (2, 18, 3, 3),
-                #  'type_dict': {'deformable_conv_data': np.float16, 'deformable_offset': np.float16}},
                 ]
     sym = mx.sym.contrib.DeformableConvolution(num_filter=3, kernel=(3,3), stride=(2,2), name='deformable_conv')
-    check_consistency(sym, ctx_list)
+    check_consistency(sym, ctx_list, scale=0.1, tol=tol)
 
     # Dilate > 1
     # since atomicAdd does not support fp16 (which deformable conv uses in backward), we do not test fp16 here
@@ -1528,13 +1531,9 @@ def test_deformable_convolution_options():
                  'deformable_conv_data': (2, 2, 7, 7),
                  'deformable_conv_offset': (2, 18, 3, 3),
                  'type_dict': {'deformable_conv_data': np.float32, 'deformable_conv_offset': np.float32}},
-                # {'ctx': mx.gpu(0),
-                #  'deformable_conv_data': (2, 2, 7, 7),
-                # 'deformable_conv_offset': (2, 18, 3, 3),
-                #  'type_dict': {'deformable_conv_data': np.float16, 'deformable_offset': np.float16}},
                 ]
     sym = mx.sym.contrib.DeformableConvolution(num_filter=3, kernel=(3,3), dilate=(2,2), name='deformable_conv')
-    check_consistency(sym, ctx_list)
+    check_consistency(sym, ctx_list, scale=0.1, tol=tol)
 
     # Deformable group > 1
     # since atomicAdd does not support fp16 (which deformable conv uses in backward), we do not test fp16 here
@@ -1555,6 +1554,7 @@ def test_deformable_convolution_options():
                                                name='deformable_conv')
 
 @with_seed()
+@assert_raises_cudnn_disabled()
 def test_residual_fused():
     cell = mx.rnn.ResidualCell(
             mx.rnn.FusedRNNCell(50, num_layers=3, mode='lstm',
@@ -1610,6 +1610,7 @@ def check_rnn_layer_w_rand_inputs(layer):
         assert_almost_equal(g.asnumpy(), c.asnumpy(), rtol=1e-2, atol=1e-6)
 
 @with_seed()
+@assert_raises_cudnn_disabled()
 def test_rnn_layer():
     check_rnn_layer(gluon.rnn.RNN(100, num_layers=3))
     check_rnn_layer(gluon.rnn.RNN(100, activation='tanh', num_layers=3))
@@ -1624,7 +1625,6 @@ def test_sequence_reverse():
     check_sequence_reverse(mx.gpu(0))
 
 
-@unittest.skip("Test fails intermittently. Temporarily disabled until fixed. Tracked at https://github.com/apache/incubator-mxnet/issues/8211")
 @with_seed()
 def test_autograd_save_memory():
     x = mx.nd.zeros((128, 512, 512), ctx=mx.gpu(0))
@@ -1726,7 +1726,6 @@ def test_cross_device_autograd():
 
     assert_almost_equal(dx, x.grad.asnumpy())
 
-@unittest.skip("JIRA issue: https://issues.apache.org/jira/projects/MXNET/issues/MXNET-130")
 @with_seed()
 def test_multi_proposal_op():
     # paramters
@@ -1735,7 +1734,6 @@ def test_multi_proposal_op():
     ratios = (0.5, 1, 2)
     rpn_pre_nms_top_n = 12000
     rpn_post_nms_top_n = 2000
-    threshold = 0.7
     rpn_min_size = feature_stride
 
     feat_len = (1000 + 15) // 16
@@ -1766,7 +1764,7 @@ def test_multi_proposal_op():
             im_info[i, :] = [im_size[0], im_size[1], im_scale]
         return cls_prob, bbox_pred, im_info
 
-    def check_proposal_consistency(op, batch_size):
+    def check_proposal_consistency(op, batch_size, with_nms=False):
         '''
         op is mx.nd.contrib.Proposal or mx.nd.contrib.MultiProposal
         '''
@@ -1780,7 +1778,7 @@ def test_multi_proposal_op():
                 ratios = ratios,
                 rpn_pre_nms_top_n = rpn_pre_nms_top_n,
                 rpn_post_nms_top_n = rpn_post_nms_top_n,
-                threshold = threshold,
+                threshold = 0.7 if with_nms else 1.0,
                 rpn_min_size = rpn_min_size, output_score = True)
 
         gpu_ctx = mx.gpu(0)
@@ -1799,7 +1797,7 @@ def test_multi_proposal_op():
                 ratios = ratios,
                 rpn_pre_nms_top_n = rpn_pre_nms_top_n,
                 rpn_post_nms_top_n = rpn_post_nms_top_n,
-                threshold = threshold,
+                threshold = 0.7 if with_nms else 1.0,
                 rpn_min_size = rpn_min_size, output_score = True)
 
         rois_cpu_np = rois_cpu.asnumpy()
@@ -1808,11 +1806,18 @@ def test_multi_proposal_op():
         score_cpu_np = score_cpu.asnumpy()
         score_gpu_np = score_gpu.asnumpy()
 
-        assert_almost_equal(score_cpu_np, score_gpu_np, atol = 1e-3, rtol = 1e-3)
-        assert_almost_equal(rois_cpu_np, rois_gpu_np, atol = 1e-3, rtol = 1e-3)
+        if not with_nms:
+            assert_almost_equal(score_cpu_np, score_gpu_np, atol = 1e-3, rtol = 1e-3)
+            assert_almost_equal(rois_cpu_np, rois_gpu_np, atol = 1e-3, rtol = 1e-3)
+        else:
+            # no 100% gurantee with nms
+            assert(np.sum(np.abs(score_cpu_np - score_gpu_np) < 1e-3) >= 10)
+            assert(np.sum(np.abs(rois_cpu_np - rois_gpu_np) < 1e-3) >= 40)
 
     check_proposal_consistency(mx.nd.contrib.Proposal, 1)
-    check_proposal_consistency(mx.nd.contrib.MultiProposal, 20)
+    check_proposal_consistency(mx.nd.contrib.MultiProposal, 5)
+    check_proposal_consistency(mx.nd.contrib.Proposal, 1, with_nms=True)
+    check_proposal_consistency(mx.nd.contrib.MultiProposal, 5, with_nms=True)
 
 
 # The following 2 functions launch 0-thread kernels, an error that should be caught and signaled.

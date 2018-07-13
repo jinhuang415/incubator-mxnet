@@ -208,7 +208,6 @@ build_amzn_linux_cpu() {
         -G Ninja /work/mxnet
     ninja -v
     report_ccache_usage
-    export MXNET_LIBRARY_PATH=`pwd`/libmxnet.so
 }
 
 build_arm64() {
@@ -225,16 +224,17 @@ build_arm64() {
         -G Ninja /work/mxnet
     ninja -v
     report_ccache_usage
-    export MXNET_LIBRARY_PATH=`pwd`/libmxnet.so
-    cd /work/mxnet/python
-    python setup.py bdist_wheel --universal
-    cp dist/*.whl /work/build
+    build_wheel
 }
 
 build_android_armv7() {
     set -ex
     cd /work/build
+#        -DCMAKE_SYSTEM_NAME=Android\
+#        -DCMAKE_ANDROID_NDK=${CROSS_ROOT} \
+#        -DCMAKE_SYSTEM_VERSION=21\
     cmake \
+        -DANDROID=ON\
         -DCMAKE_CXX_COMPILER_LAUNCHER=ccache \
         -DCMAKE_C_COMPILER_LAUNCHER=ccache \
         -DUSE_CUDA=OFF\
@@ -249,10 +249,6 @@ build_android_armv7() {
         -G Ninja /work/mxnet
     ninja -v
     report_ccache_usage
-    export MXNET_LIBRARY_PATH=`pwd`/libmxnet.so
-    cd /work/mxnet/python
-    python setup.py bdist_wheel --universal
-    cp dist/*.whl /work/build
 }
 
 build_android_arm64() {
@@ -263,8 +259,7 @@ build_android_arm64() {
 # build with CMake in Android.
 #        -DCMAKE_ANDROID_NDK=${CROSS_ROOT} \
 #        -DCMAKE_SYSTEM_VERSION=${ANDROID_NDK_REVISION} \
-#        -DCMAKE_SYSTEM_NAME=Android \
-#
+#        -DCMAKE_SYSTEM_VERSION=21\
     cmake\
         -DANDROID=ON \
         -DUSE_CUDA=OFF\
@@ -457,6 +452,23 @@ build_ubuntu_gpu_mkldnn() {
     report_ccache_usage
 }
 
+build_ubuntu_gpu_mkldnn_nocudnn() {
+    set -ex
+
+    build_ccache_wrappers
+
+    make  \
+        DEV=1                         \
+        USE_BLAS=openblas             \
+        USE_MKLDNN=1                  \
+        USE_CUDA=1                    \
+        USE_CUDA_PATH=/usr/local/cuda \
+        USE_CUDNN=0                   \
+        -j$(nproc)
+
+    report_ccache_usage
+}
+
 build_ubuntu_gpu_cuda91_cudnn7() {
     set -ex
     # unfortunately this build has problems in 3rdparty dependencies with ccache and make
@@ -616,6 +628,14 @@ unittest_ubuntu_python3_gpu() {
     nosetests-3.4 $NOSE_COVERAGE_ARGUMENTS --with-xunit --xunit-file nosetests_gpu.xml --verbose tests/python/gpu
 }
 
+unittest_ubuntu_python3_gpu_nocudnn() {
+    set -ex
+    export PYTHONPATH=./python/
+    export MXNET_STORAGE_FALLBACK_LOG_VERBOSE=0
+    export CUDNN_OFF_TEST_ONLY=true
+    nosetests-3.4 $NOSE_COVERAGE_ARGUMENTS --with-xunit --xunit-file nosetests_gpu.xml --verbose tests/python/gpu
+}
+
 # quantization gpu currently only runs on P3 instances
 # need to separte it from unittest_ubuntu_python2_gpu()
 unittest_ubuntu_python2_quantization_gpu() {
@@ -643,13 +663,14 @@ unittest_ubuntu_python3_quantization_gpu() {
 unittest_ubuntu_cpu_scala() {
     set -ex
     make scalapkg USE_BLAS=openblas USE_DIST_KVSTORE=1
-    make scalatest USE_BLAS=openblas USE_DIST_KVSTORE=1
+    make scalaunittest USE_BLAS=openblas USE_DIST_KVSTORE=1
 }
 
-unittest_ubuntu_gpu_scala() {
+unittest_ubuntu_cpu_clojure() {
     set -ex
-    make scalapkg USE_OPENCV=1 USE_BLAS=openblas USE_CUDA=1 USE_CUDA_PATH=/usr/local/cuda USE_CUDNN=1 USE_DIST_KVSTORE=1
-    make scalatest USE_OPENCV=1 USE_BLAS=openblas USE_CUDA=1 USE_CUDA_PATH=/usr/local/cuda USE_CUDNN=1 SCALA_TEST_ON_GPU=1 USE_DIST_KVSTORE=1
+    make scalapkg USE_OPENCV=1 USE_BLAS=openblas USE_DIST_KVSTORE=1
+    make scalainstall USE_OPENCV=1 USE_BLAS=openblas USE_DIST_KVSTORE=1
+    ./contrib/clojure-package/ci-test.sh
 }
 
 unittest_ubuntu_cpugpu_perl() {
@@ -700,6 +721,8 @@ integrationtest_ubuntu_cpu_onnx() {
 	pytest tests/python-pytest/onnx/import/mxnet_backend_test.py
 	pytest tests/python-pytest/onnx/import/onnx_import_test.py
 	pytest tests/python-pytest/onnx/import/gluon_backend_test.py
+	pytest tests/python-pytest/onnx/export/onnx_backend_test.py
+	python tests/python-pytest/onnx/export/mxnet_export_test.py
 }
 
 integrationtest_ubuntu_gpu_python() {
@@ -720,6 +743,12 @@ integrationtest_ubuntu_gpu_cpp_package() {
     cpp-package/tests/ci_test.sh
 }
 
+integrationtest_ubuntu_gpu_scala() {
+    set -ex
+    make scalapkg USE_OPENCV=1 USE_BLAS=openblas USE_CUDA=1 USE_CUDA_PATH=/usr/local/cuda USE_CUDNN=1 USE_DIST_KVSTORE=1 SCALA_ON_GPU=1
+    make scalaintegrationtest USE_OPENCV=1 USE_BLAS=openblas USE_CUDA=1 USE_CUDA_PATH=/usr/local/cuda USE_CUDNN=1 SCALA_TEST_ON_GPU=1 USE_DIST_KVSTORE=1
+}
+
 integrationtest_ubuntu_gpu_dist_kvstore() {
     set -ex
     export PYTHONPATH=./python/
@@ -728,6 +757,7 @@ integrationtest_ubuntu_gpu_dist_kvstore() {
     ../../tools/launch.py -n 7 --launcher local python dist_sync_kvstore.py
     ../../tools/launch.py -n 7 --launcher local python dist_sync_kvstore.py --no-multiprecision
     ../../tools/launch.py -n 7 --launcher local python dist_device_sync_kvstore.py
+    ../../tools/launch.py -n 7 --launcher local python dist_sync_kvstore.py --type=invalid
     ../../tools/launch.py -n 7 --launcher local python dist_sync_kvstore.py --type=gluon
 }
 
@@ -781,8 +811,26 @@ build_docs() {
 
 #Runs Apache RAT Check on MXNet Source for License Headers
 nightly_test_rat_check() {
-    set -ex
-    ./tests/nightly/apache_rat_license_check/license_check.sh
+    set -e
+    pushd .
+    
+    cd /work/deps/trunk/apache-rat/target
+
+    # Use shell number 5 to duplicate the log output. It get sprinted and stored in $OUTPUT at the same time https://stackoverflow.com/a/12451419
+    exec 5>&1
+    OUTPUT=$(java -jar apache-rat-0.13-SNAPSHOT.jar -E /work/mxnet/tests/nightly/apache_rat_license_check/rat-excludes -d /work/mxnet|tee >(cat - >&5))
+    ERROR_MESSAGE="Printing headers for text files without a valid license header"
+
+
+    echo "-------Process The Output-------"
+
+    if [[ $OUTPUT =~ $ERROR_MESSAGE ]]; then
+        echo "ERROR: RAT Check detected files with unknown licenses. Please fix and run test again!";
+        exit 1
+    else
+        echo "SUCCESS: There are no files with an Unknown License.";
+    fi
+    popd
 }
 
 #Checks MXNet for Compilation Warnings
@@ -841,6 +889,13 @@ deploy_docs() {
     make docs
 
     popd
+}
+
+# broken_link_checker
+
+broken_link_checker() {
+    set -ex
+    ./tests/nightly/broken_link_checker_test/broken_link_checker.sh
 }
 
 ##############################################################

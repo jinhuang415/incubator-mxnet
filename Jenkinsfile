@@ -93,22 +93,28 @@ echo ${libs} | sed -e 's/,/ /g' | xargs md5sum
 }
 
 def publish_test_coverage() {
-    sh 'curl -s https://codecov.io/bash | bash -s -'
+    // Fall back to our own copy of the bash helper if it failed to download the public version
+    sh '(curl --retry 10 -s https://codecov.io/bash | bash -s -) || (curl --retry 10 -s https://s3-us-west-2.amazonaws.com/mxnet-ci-prod-slave-data/codecov-bash.txt | bash -s -)'
 }
 
 def collect_test_results_unix(original_file_name, new_file_name) {
-    echo 'Saving python test results for ' + new_file_name
-    // Rename file to make it distinguishable. Unfortunately, it's not possible to get STAGE_NAME in a parallel stage
-    sh 'cp ' + original_file_name + ' ' + new_file_name
-    archiveArtifacts artifacts: new_file_name
+    if (fileExists(original_file_name)) {
+        // Rename file to make it distinguishable. Unfortunately, it's not possible to get STAGE_NAME in a parallel stage
+        // Thus, we have to pick a name manually and rename the files so that they can be stored separately.
+        sh 'cp ' + original_file_name + ' ' + new_file_name
+        archiveArtifacts artifacts: new_file_name
+    }
 }
 
 def collect_test_results_windows(original_file_name, new_file_name) {
-    echo 'Saving python test results for ' + new_file_name
     // Rename file to make it distinguishable. Unfortunately, it's not possible to get STAGE_NAME in a parallel stage
-    bat 'xcopy ' + original_file_name + ' ' + new_file_name
-    archiveArtifacts artifacts: new_file_name
-} 
+    // Thus, we have to pick a name manually and rename the files so that they can be stored separately.
+    if (fileExists(original_file_name)) {
+        bat 'xcopy ' + original_file_name + ' ' + new_file_name + '*'
+        archiveArtifacts artifacts: new_file_name
+    }
+}
+
 
 def docker_run(platform, function_name, use_nvidia, shared_mem = '500m') {
   def command = "ci/build.py --docker-registry ${env.DOCKER_CACHE_REGISTRY} %USE_NVIDIA% --platform %PLATFORM% --shm-size %SHARED_MEM% /work/runtime_functions.sh %FUNCTION_NAME%"
@@ -157,12 +163,29 @@ def python3_gpu_ut(docker_container_name) {
   }
 }
 
+// Python 3 NOCUDNN
+def python3_gpu_ut_nocudnn(docker_container_name) {
+  timeout(time: max_time, unit: 'MINUTES') {
+    docker_run(docker_container_name, 'unittest_ubuntu_python3_gpu_nocudnn', true)
+  }
+}
+
 try {
-  stage("Sanity Check") {
-    node('mxnetlinux-cpu') {
-      ws('workspace/sanity') {
-        init_git()
-        docker_run('ubuntu_cpu', 'sanity_check', false)
+  stage('Sanity Check') {
+    parallel 'Lint': {
+      node('mxnetlinux-cpu') {
+        ws('workspace/sanity-lint') {
+          init_git()
+          docker_run('ubuntu_cpu', 'sanity_check', false)
+        }
+      }
+    },
+    'RAT License': {
+      node('mxnetlinux-cpu') {
+        ws('workspace/sanity-rat') {
+          init_git()
+          docker_run('ubuntu_rat', 'nightly_test_rat_check', false)
+        }
       }
     }
   }
@@ -275,6 +298,17 @@ try {
           }
         }
       }
+    },
+    'GPU: MKLDNN_CUDNNOFF': {
+       node('mxnetlinux-cpu') {
+         ws('workspace/build-mkldnn-gpu-nocudnn') {
+           timeout(time: max_time, unit: 'MINUTES') {
+             init_git()
+             docker_run('ubuntu_build_cuda', 'build_ubuntu_gpu_mkldnn_nocudnn', false)
+             pack_lib('mkldnn_gpu_nocudnn', mx_mkldnn_lib)
+           }
+         }
+       }
     },
     'GPU: CUDA9.1+cuDNN7': {
       node('mxnetlinux-cpu') {
@@ -486,10 +520,21 @@ try {
           }
         }
       }
+    },
+    'Android / ARMv7':{
+      node('mxnetlinux-cpu') {
+        ws('workspace/androidv7') {
+          timeout(time: max_time, unit: 'MINUTES') {
+            init_git()
+            docker_run('android_armv7', 'build_android_armv7', false)
+          }
+        }
+      }
     }
+
   } // End of stage('Build')
 
-  stage('Unit Test') {
+  stage('Tests') {
     parallel 'Python2: CPU': {
       node('mxnetlinux-cpu') {
         ws('workspace/ut-python2-cpu') {
@@ -640,6 +685,20 @@ try {
         }
       }
     },
+    'Python3: MKLDNN-GPU-NOCUDNN': {
+      node('mxnetlinux-gpu') {
+        ws('workspace/ut-python3-mkldnn-gpu-nocudnn') {
+          try {
+            init_git()
+            unpack_lib('mkldnn_gpu_nocudnn', mx_mkldnn_lib)
+            python3_gpu_ut_nocudnn('ubuntu_gpu')
+            publish_test_coverage()
+          } finally {
+            collect_test_results_unix('nosetests_gpu.xml', 'nosetests_python3_mkldnn_gpu_nocudnn.xml')
+          }
+        }
+      }
+    },
     'Python3: CentOS 7 CPU': {
       node('mxnetlinux-cpu') {
         ws('workspace/build-centos7-cpu') {
@@ -685,13 +744,13 @@ try {
         }
       }
     },
-    'Scala: GPU': {
-      node('mxnetlinux-gpu') {
-        ws('workspace/ut-scala-gpu') {
+    'Clojure: CPU': {
+      node('mxnetlinux-cpu') {
+        ws('workspace/ut-clojure-cpu') {
           timeout(time: max_time, unit: 'MINUTES') {
             init_git()
-            unpack_lib('gpu', mx_dist_lib)
-            docker_run('ubuntu_gpu', 'unittest_ubuntu_gpu_scala', true)
+            unpack_lib('cpu', mx_dist_lib)
+            docker_run('ubuntu_cpu', 'unittest_ubuntu_cpu_clojure', false)
             publish_test_coverage()
           }
         }
@@ -786,8 +845,7 @@ try {
                 del /S /Q ${env.WORKSPACE}\\pkg_vc14_cpu\\python\\*.pyc
                 C:\\mxnet\\test_cpu.bat"""
             } finally {
-              // We are unable to modify test_cpu.bat, so we can't track test failures on Windows
-              // collect_test_results_windows('nosetests.xml', 'nosetests_windows_python2_cpu.xml')
+              collect_test_results_windows('nosetests_unittest.xml', 'nosetests_unittest_windows_python2_cpu.xml')
             }
           }
         }
@@ -809,8 +867,7 @@ try {
                 del /S /Q ${env.WORKSPACE}\\pkg_vc14_cpu\\python\\*.pyc
                 C:\\mxnet\\test_cpu.bat"""
             } finally {
-              // We are unable to modify test_cpu.bat, so we can't track test failures on Windows
-              // collect_test_results_windows('nosetests.xml', 'nosetests_windows_python3_cpu.xml')
+              collect_test_results_windows('nosetests_unittest.xml', 'nosetests_unittest_windows_python3_cpu.xml')
             }
           }
         }
@@ -832,8 +889,8 @@ try {
                 del /S /Q ${env.WORKSPACE}\\pkg_vc14_gpu\\python\\*.pyc
                 C:\\mxnet\\test_gpu.bat"""
             } finally {
-              // We are unable to modify test_cpu.bat, so we can't track test failures on Windows
-              // collect_test_results_windows('nosetests.xml', 'nosetests_windows_python2_gpu.xml')
+              collect_test_results_windows('nosetests_gpu_forward.xml', 'nosetests_gpu_forward_windows_python2_gpu.xml')
+              collect_test_results_windows('nosetests_gpu_operator.xml', 'nosetests_gpu_operator_windows_python2_gpu.xml')
             }
           }
         }
@@ -855,8 +912,8 @@ try {
                 del /S /Q ${env.WORKSPACE}\\pkg_vc14_gpu\\python\\*.pyc
                 C:\\mxnet\\test_gpu.bat"""
             } finally {
-              // We are unable to modify test_cpu.bat, so we can't track test failures on Windows
-              // collect_test_results_windows('nosetests.xml', 'nosetests_windows_python3_gpu.xml')
+              collect_test_results_windows('nosetests_gpu_forward.xml', 'nosetests_gpu_forward_windows_python3_gpu.xml')
+              collect_test_results_windows('nosetests_gpu_operator.xml', 'nosetests_gpu_operator_windows_python3_gpu.xml')
             }
           }
         }
@@ -878,17 +935,14 @@ try {
                 del /S /Q ${env.WORKSPACE}\\pkg_vc14_gpu_mkldnn\\python\\*.pyc
                 C:\\mxnet\\test_gpu.bat"""
             } finally {
-              // We are unable to modify test_cpu.bat, so we can't track test failures on Windows
-              // collect_test_results_windows('nosetests.xml', 'nosetests_windows_python3_mkldnn_Gpu.xml')
+              collect_test_results_windows('nosetests_gpu_forward.xml', 'nosetests_gpu_forward_windows_python3_gpu_mkldnn.xml')
+              collect_test_results_windows('nosetests_gpu_operator.xml', 'nosetests_gpu_operator_windows_python3_gpu_mkldnn.xml')
             }
           }
         }
       }
-    }
-  }
-
-  stage('Integration Test') {
-    parallel 'Onnx CPU': {
+    },
+    'Onnx CPU': {
       node('mxnetlinux-cpu') {
         ws('workspace/it-onnx-cpu') {
           timeout(time: max_time, unit: 'MINUTES') {
@@ -946,18 +1000,31 @@ try {
         }
       }
     },
-    'dist-kvstore tests GPU': {
+    'Scala: GPU': {
       node('mxnetlinux-gpu') {
-        ws('workspace/it-dist-kvstore') {
+        ws('workspace/ut-scala-gpu') {
           timeout(time: max_time, unit: 'MINUTES') {
             init_git()
-            unpack_lib('gpu')
-            docker_run('ubuntu_gpu', 'integrationtest_ubuntu_gpu_dist_kvstore', true)
+            unpack_lib('gpu', mx_dist_lib)
+            docker_run('ubuntu_gpu', 'integrationtest_ubuntu_gpu_scala', true)
             publish_test_coverage()
           }
         }
       }
     }
+    // Disable until fixed https://github.com/apache/incubator-mxnet/issues/11441
+    // 'dist-kvstore tests GPU': {
+    //  node('mxnetlinux-gpu') {
+    //    ws('workspace/it-dist-kvstore') {
+    //      timeout(time: max_time, unit: 'MINUTES') {
+    //        init_git()
+    //        unpack_lib('gpu')
+    //        docker_run('ubuntu_gpu', 'integrationtest_ubuntu_gpu_dist_kvstore', true)
+    //        publish_test_coverage()
+    //      }
+    //    }
+    //  }
+    //}
   }
 
   stage('Deploy') {
@@ -982,8 +1049,8 @@ try {
   }
 } finally {
   node("mxnetlinux-cpu") {
-    // Only send email if master failed
-    if (currentBuild.result == "FAILURE" && env.BRANCH_NAME == "master") {
+    // Only send email if master or release branches failed
+    if (currentBuild.result == "FAILURE" && (env.BRANCH_NAME == "master" || env.BRANCH_NAME.startsWith("v"))) {
       emailext body: 'Build for MXNet branch ${BRANCH_NAME} has broken. Please view the build at ${BUILD_URL}', replyTo: '${EMAIL}', subject: '[BUILD FAILED] Branch ${BRANCH_NAME} build ${BUILD_NUMBER}', to: '${EMAIL}'
     }
     // Remember to rethrow so the build is marked as failing
