@@ -123,13 +123,13 @@ def benchmark_score(symbol_file, param_file, ctx, batch_size, num_batches, logge
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser(description='Score a model on a dataset')
-    parser.add_argument('--ctx', type=str, default='gpu')
+    parser.add_argument('--ctx', type=str, default='cpu')
     parser.add_argument('--benchmark', type=bool, default=False, help='dummy data benchmark')
     parser.add_argument('--symbol-file', type=str, required=True, help='symbol file path')
     parser.add_argument('--param-file', type=str, required=True, help='param file path')
     parser.add_argument('--batch-size', type=int, default=32)
     parser.add_argument('--label-name', type=str, default='softmax_label')
-    parser.add_argument('--dataset', type=str, required=True, help='dataset path')
+    parser.add_argument('--dataset', type=str, required=False, help='dataset path')
     parser.add_argument('--rgb-mean', type=str, default='0,0,0')
     parser.add_argument('--image-shape', type=str, default='3,224,224')
     parser.add_argument('--data-nthreads', type=int, default=60, help='number of threads for data decoding')
