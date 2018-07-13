@@ -416,7 +416,6 @@ Graph GraphFusionConvBN(Graph &src) {
             std::string& weight_name = conv_input_nodeEntry.node->attrs.name;
             bias_name = weight_name;
             bias_name.replace(bias_name.find("weight"),strlen("weight"), "bias");
-            std::cout<<"bias name is "<<bias_name<<std::endl;
             weight_name.insert(0, "convBNReluPara_");
           }
           if (conv_input_nodeEntry.node->attrs.name.find("bias") != std::string::npos) {

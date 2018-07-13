@@ -77,7 +77,6 @@ static void MKLDNNQuantizedConvForward(const nnvm::NodeAttrs& attrs,
       sum_range = MaxAbs(*in_data[sum_index+1].data().dptr<float>(),
                         *in_data[sum_index+2].data().dptr<float>());
       postsum_scale = sum_range/out_range;
-      std::cout << "post scale = " << postsum_scale << std::endl;
     }
   }
 

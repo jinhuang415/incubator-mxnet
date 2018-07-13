@@ -74,7 +74,6 @@ mkldnn::convolution_forward::primitive_desc GetConvFwdImpl(
   }
   if (param.with_sum) {
     float scale = sum_scale;
-    std::cout << "scale = " << scale << std::endl;
     ops.append_sum(scale);
   }
   if (param.with_postsum_relu) {
