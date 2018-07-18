@@ -571,7 +571,7 @@ Graph GraphFusionAddSumFlag(Graph &src) {
 Graph FuseGraph(Graph &&src) {
   Graph fused_graph = GraphFusionConvBN(src);
   fused_graph = GraphFusionConvRelu(fused_graph);
-  fused_graph = GraphFusionSparsity(fused_graph);
+  //fused_graph = GraphFusionSparsity(fused_graph);
   fused_graph = GraphFusionConvSum(fused_graph);
   fused_graph = GraphFusionConvRelu(fused_graph);
   fused_graph = GraphFusionAddSumFlag(fused_graph);
