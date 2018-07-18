@@ -1575,6 +1575,8 @@ void GraphExecutor::ExecuteInputMonCallback(size_t nid) {
   for (auto &e : inode.inputs) {
     const auto& input_node = idx[e.node_id].source;
     if (!input_node->is_variable()) {
+      // in case conv+sum fusion, we should only collect input stats for the 1st
+      // NDArray, the 2nd NDArray is useless and may overwrite the 1st stats
       NDArray *cpy = new NDArray(opnode.exec->in_array[0]);
       // here we need to pass this layer's name as well as input layer's name
       // so python collect function could check if this layer is within input
@@ -1582,6 +1584,7 @@ void GraphExecutor::ExecuteInputMonCallback(size_t nid) {
       std::string name = node->attrs.name + "-"
                               + input_node->attrs.name + "_data";
       this->input_monitor_callback_(name.c_str(), reinterpret_cast<void*>(cpy));
+      break;
     }
   }
 }
