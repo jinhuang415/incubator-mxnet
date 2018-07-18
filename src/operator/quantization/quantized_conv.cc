@@ -70,9 +70,6 @@ bool QuantizedConvShape(const nnvm::NodeAttrs& attrs,
   for (int i = start; i < end; ++i) {
     SHAPE_ASSIGN_CHECK(*in_shape, i, TShape{1});
   }
-  if (param.with_sum) {
-    SHAPE_ASSIGN_CHECK(*in_shape, end, (*out_shape)[0])
-  }
   if (!param.no_bias) {
     SHAPE_ASSIGN_CHECK(*in_shape, 2, Shape1(param.num_filter));
   }
@@ -87,6 +84,9 @@ bool QuantizedConvShape(const nnvm::NodeAttrs& attrs,
   SHAPE_ASSIGN_CHECK(*out_shape, 0, oshape);
   SHAPE_ASSIGN_CHECK(*out_shape, 1, TShape({1}));
   SHAPE_ASSIGN_CHECK(*out_shape, 2, TShape({1}));
+  if (param.with_sum) {
+    SHAPE_ASSIGN_CHECK(*in_shape, start-1, oshape);
+  }
   return true;
 }
 
@@ -201,7 +201,7 @@ and max thresholds representing the threholds for quantizing the float32 output 
 .set_attr<nnvm::FInplaceOption>("FInplaceOption", [](const NodeAttrs& attrs) {
   const ConvolutionParam& params = nnvm::get<ConvolutionParam>(attrs.parsed);
   if (params.with_sum) {
-    return std::vector<std::pair<int, int>>{std::pair<int, int>{3, 0}};//params.no_bias? 2 : 3, 0}};
+    return std::vector<std::pair<int, int>>{std::pair<int, int>{params.no_bias? 2 : 3, 0}};
   } else {
     return std::vector<std::pair<int, int>>();
   }

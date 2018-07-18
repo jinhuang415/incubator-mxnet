@@ -47,7 +47,8 @@ static void MKLDNNQuantizedConvForward(const nnvm::NodeAttrs& attrs,
 
   float data_range, weight_range, out_range;
   float quantized_data_range, quantized_weight_range, quantized_out_range;
-  float data_scale, weight_scale, out_scale;
+  float quantized_sum_in_range;
+  float data_scale, weight_scale, out_scale, sum_in_scale;
   float conv_scale = MKLDNNConvForward::NO_SCALE;
   float postsum_scale = 1.0f;
   if (param.min_calib_range.has_value() && param.max_calib_range.has_value()) {
@@ -61,10 +62,15 @@ static void MKLDNNQuantizedConvForward(const nnvm::NodeAttrs& attrs,
                           *in_data[num_inputs+3].data().dptr<float>());
     quantized_data_range = MaxAbs(MaxValue<uint8_t>(), MinValue<uint8_t>());
     quantized_weight_range = MinAbs(MaxValue<int8_t>(), MinValue<int8_t>());
-    if (param.with_relu) {
+    // for conv+sum+relu fusion case, we will set the out data type to int8 in
+    // order to allow NDArray inplace, but the out_range should still use uint8
+    // range
+    if (param.with_sum && param.with_postsum_relu) {
       quantized_out_range = MaxAbs(MaxValue<uint8_t>(), MinValue<uint8_t>());
-    } else {
+    } else if (out_data[conv::kOut].dtype() == mshadow::kInt8) {
       quantized_out_range = MinAbs(MaxValue<int8_t>(), MinValue<int8_t>());
+    } else {
+      quantized_out_range = MaxAbs(MaxValue<uint8_t>(), MinValue<uint8_t>());
     }
     data_scale = quantized_data_range / data_range;
     weight_scale = quantized_weight_range / weight_range;
@@ -72,11 +78,20 @@ static void MKLDNNQuantizedConvForward(const nnvm::NodeAttrs& attrs,
     conv_scale = out_scale / data_scale / weight_scale;
 
     if (param.with_sum) {
-      float sum_range;
-      size_t sum_index = param.no_bias ? 2 : 3;
-      sum_range = MaxAbs(*in_data[sum_index+1].data().dptr<float>(),
-                        *in_data[sum_index+2].data().dptr<float>());
-      postsum_scale = sum_range/out_range;
+      float sum_in_range;
+      size_t sum_range_index = param.no_bias ? 7 : 10;
+      // for the sum input range, if it's the output of a conv+sum+relu fusion
+      // node (directly connected or indirectly connected via pooling), then
+      // should use uint8 range
+      if (in_data[num_inputs-1].dtype() == mshadow::kInt8 && !param.with_convsumrelu_in) {
+        quantized_sum_in_range = MinAbs(MaxValue<int8_t>(), MinValue<int8_t>());
+      } else {
+        quantized_sum_in_range = MaxAbs(MaxValue<uint8_t>(), MinValue<uint8_t>());
+      }
+      sum_in_range = MaxAbs(*in_data[sum_range_index].data().dptr<float>(),
+                        *in_data[sum_range_index+1].data().dptr<float>());
+      sum_in_scale = quantized_sum_in_range / sum_in_range;
+      postsum_scale = out_scale/sum_in_scale;
     }
   }
 

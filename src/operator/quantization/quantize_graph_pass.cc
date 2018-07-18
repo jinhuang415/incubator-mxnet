@@ -541,6 +541,16 @@ Graph GraphFusionAddSumFlag(Graph &src) {
              && node->op() != nullptr && node->op()->name == "Convolution") {
 	    new_node->attrs.dict["with_convsumrelu_in"] = "True";
         new_node->op()->attr_parser(&(new_node->attrs));
+      } else if (e.node->op() != nullptr && e.node->op()->name == "Pooling"
+          && node->op() != nullptr && node->op()->name == "Convolution") {
+        for (const auto& ee : e.node->inputs) {
+          if (ee.node->op() != nullptr && ee.node->op()->name == "Convolution"
+               && ee.node->attrs.dict["with_sum"] == "True"
+               && ee.node->attrs.dict["with_postsum_relu"] == "True") {
+	        new_node->attrs.dict["with_convsumrelu_in"] = "True";
+            new_node->op()->attr_parser(&(new_node->attrs));
+          }
+        }
       }
       NodeEntry mirror_entry = NodeEntry{mirror_node, e.index, e.version};
       new_node->inputs.emplace_back(NodeEntry{mirror_node, e.index, e.version});
