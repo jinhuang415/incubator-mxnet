@@ -99,7 +99,7 @@
       "name": "quantized_stage1_unit1_conv1", 
       "attrs": {
         "kernel": "(1, 1)", 
-        "max_calib_range": "3.312086", 
+        "max_calib_range": "4.749603", 
         "min_calib_range": "-0.000000", 
         "no_bias": "False", 
         "num_filter": "64", 
@@ -146,7 +146,7 @@
       "name": "quantized_stage1_unit1_conv2", 
       "attrs": {
         "kernel": "(3, 3)", 
-        "max_calib_range": "3.607241", 
+        "max_calib_range": "4.527779", 
         "min_calib_range": "-0.000000", 
         "no_bias": "False", 
         "num_filter": "64", 
@@ -203,8 +203,8 @@
       "name": "quantized_stage1_unit1_conv1sc", 
       "attrs": {
         "kernel": "(1, 1)", 
-        "max_calib_range": "4.152544", 
-        "min_calib_range": "-8.540608", 
+        "max_calib_range": "6.048312", 
+        "min_calib_range": "-10.725476", 
         "no_bias": "False", 
         "num_filter": "256", 
         "out_type": "int8", 
@@ -238,7 +238,7 @@
       "name": "quantized_stage1_unit1_conv3", 
       "attrs": {
         "kernel": "(1, 1)", 
-        "max_calib_range": "5.696266", 
+        "max_calib_range": "5.247026", 
         "min_calib_range": "-0.000000", 
         "no_bias": "False", 
         "num_filter": "256", 
@@ -299,7 +299,7 @@
       "name": "quantized_stage1_unit2_conv1", 
       "attrs": {
         "kernel": "(1, 1)", 
-        "max_calib_range": "5.895574", 
+        "max_calib_range": "6.544438", 
         "min_calib_range": "-0.000000", 
         "no_bias": "False", 
         "num_filter": "64", 
@@ -347,7 +347,7 @@
       "name": "quantized_stage1_unit2_conv2", 
       "attrs": {
         "kernel": "(3, 3)", 
-        "max_calib_range": "4.834085", 
+        "max_calib_range": "4.189551", 
         "min_calib_range": "-0.000000", 
         "no_bias": "False", 
         "num_filter": "64", 
@@ -394,7 +394,7 @@
       "name": "quantized_stage1_unit2_conv3", 
       "attrs": {
         "kernel": "(1, 1)", 
-        "max_calib_range": "7.713281", 
+        "max_calib_range": "7.602900", 
         "min_calib_range": "-0.000000", 
         "no_bias": "False", 
         "num_filter": "256", 
@@ -456,7 +456,7 @@
       "name": "quantized_stage1_unit3_conv1", 
       "attrs": {
         "kernel": "(1, 1)", 
-        "max_calib_range": "4.251566", 
+        "max_calib_range": "3.625928", 
         "min_calib_range": "-0.000000", 
         "no_bias": "False", 
         "num_filter": "64", 
@@ -504,7 +504,7 @@
       "name": "quantized_stage1_unit3_conv2", 
       "attrs": {
         "kernel": "(3, 3)", 
-        "max_calib_range": "3.165119", 
+        "max_calib_range": "3.332056", 
         "min_calib_range": "-0.000000", 
         "no_bias": "False", 
         "num_filter": "64", 
@@ -562,13 +562,14 @@
       "name": "quantized_stage1_unit3_conv3", 
       "attrs": {
         "kernel": "(1, 1)", 
-        "max_calib_range": "6.356155", 
+        "max_calib_range": "5.456567", 
         "min_calib_range": "-0.000000", 
         "no_bias": "False", 
         "num_filter": "256", 
         "out_type": "uint8", 
         "pad": "(0, 0)", 
         "stride": "(1, 1)", 
+        "with_convsumrelu_in": "True", 
         "with_postsum_relu": "True", 
         "with_sum": "True", 
         "workspace": "256"
@@ -623,7 +624,7 @@
       "name": "quantized_stage2_unit1_conv1", 
       "attrs": {
         "kernel": "(1, 1)", 
-        "max_calib_range": "4.190123", 
+        "max_calib_range": "2.769558", 
         "min_calib_range": "-0.000000", 
         "no_bias": "False", 
         "num_filter": "128", 
@@ -671,7 +672,7 @@
       "name": "quantized_stage2_unit1_conv2", 
       "attrs": {
         "kernel": "(3, 3)", 
-        "max_calib_range": "4.543040", 
+        "max_calib_range": "3.113384", 
         "min_calib_range": "-0.000000", 
         "no_bias": "False", 
         "num_filter": "128", 
@@ -728,8 +729,8 @@
       "name": "quantized_stage2_unit1_conv1sc", 
       "attrs": {
         "kernel": "(1, 1)", 
-        "max_calib_range": "3.776309", 
-        "min_calib_range": "-2.766659", 
+        "max_calib_range": "3.744519", 
+        "min_calib_range": "-3.291139", 
         "no_bias": "False", 
         "num_filter": "512", 
         "out_type": "int8", 
@@ -764,7 +765,7 @@
       "name": "quantized_stage2_unit1_conv3", 
       "attrs": {
         "kernel": "(1, 1)", 
-        "max_calib_range": "3.724114", 
+        "max_calib_range": "4.021874", 
         "min_calib_range": "-0.000000", 
         "no_bias": "False", 
         "num_filter": "512", 
@@ -825,7 +826,7 @@
       "name": "quantized_stage2_unit2_conv1", 
       "attrs": {
         "kernel": "(1, 1)", 
-        "max_calib_range": "2.745732", 
+        "max_calib_range": "2.765153", 
         "min_calib_range": "-0.000000", 
         "no_bias": "False", 
         "num_filter": "128", 
@@ -873,7 +874,7 @@
       "name": "quantized_stage2_unit2_conv2", 
       "attrs": {
         "kernel": "(3, 3)", 
-        "max_calib_range": "5.337787", 
+        "max_calib_range": "5.069326", 
         "min_calib_range": "-0.000000", 
         "no_bias": "False", 
         "num_filter": "128", 
@@ -920,7 +921,7 @@
       "name": "quantized_stage2_unit2_conv3", 
       "attrs": {
         "kernel": "(1, 1)", 
-        "max_calib_range": "4.166056", 
+        "max_calib_range": "4.421703", 
         "min_calib_range": "-0.000000", 
         "no_bias": "False", 
         "num_filter": "512", 
@@ -982,7 +983,7 @@
       "name": "quantized_stage2_unit3_conv1", 
       "attrs": {
         "kernel": "(1, 1)", 
-        "max_calib_range": "4.213983", 
+        "max_calib_range": "4.660470", 
         "min_calib_range": "-0.000000", 
         "no_bias": "False", 
         "num_filter": "128", 
@@ -1030,7 +1031,7 @@
       "name": "quantized_stage2_unit3_conv2", 
       "attrs": {
         "kernel": "(3, 3)", 
-        "max_calib_range": "7.935387", 
+        "max_calib_range": "6.935782", 
         "min_calib_range": "-0.000000", 
         "no_bias": "False", 
         "num_filter": "128", 
@@ -1077,7 +1078,7 @@
       "name": "quantized_stage2_unit3_conv3", 
       "attrs": {
         "kernel": "(1, 1)", 
-        "max_calib_range": "4.243294", 
+        "max_calib_range": "4.485906", 
         "min_calib_range": "-0.000000", 
         "no_bias": "False", 
         "num_filter": "512", 
@@ -1139,7 +1140,7 @@
       "name": "quantized_stage2_unit4_conv1", 
       "attrs": {
         "kernel": "(1, 1)", 
-        "max_calib_range": "5.643494", 
+        "max_calib_range": "6.146937", 
         "min_calib_range": "-0.000000", 
         "no_bias": "False", 
         "num_filter": "128", 
@@ -1187,7 +1188,7 @@
       "name": "quantized_stage2_unit4_conv2", 
       "attrs": {
         "kernel": "(3, 3)", 
-        "max_calib_range": "3.782549", 
+        "max_calib_range": "3.333310", 
         "min_calib_range": "-0.000000", 
         "no_bias": "False", 
         "num_filter": "128", 
@@ -1245,13 +1246,14 @@
       "name": "quantized_stage2_unit4_conv3", 
       "attrs": {
         "kernel": "(1, 1)", 
-        "max_calib_range": "3.749991", 
+        "max_calib_range": "4.477477", 
         "min_calib_range": "-0.000000", 
         "no_bias": "False", 
         "num_filter": "512", 
         "out_type": "uint8", 
         "pad": "(0, 0)", 
         "stride": "(1, 1)", 
+        "with_convsumrelu_in": "True", 
         "with_postsum_relu": "True", 
         "with_sum": "True", 
         "workspace": "256"
@@ -1306,7 +1308,7 @@
       "name": "quantized_stage3_unit1_conv1", 
       "attrs": {
         "kernel": "(1, 1)", 
-        "max_calib_range": "2.080098", 
+        "max_calib_range": "2.107542", 
         "min_calib_range": "-0.000000", 
         "no_bias": "False", 
         "num_filter": "256", 
@@ -1354,7 +1356,7 @@
       "name": "quantized_stage3_unit1_conv2", 
       "attrs": {
         "kernel": "(3, 3)", 
-        "max_calib_range": "1.563968", 
+        "max_calib_range": "3.513967", 
         "min_calib_range": "-0.000000", 
         "no_bias": "False", 
         "num_filter": "256", 
@@ -1411,8 +1413,8 @@
       "name": "quantized_stage3_unit1_conv1sc", 
       "attrs": {
         "kernel": "(1, 1)", 
-        "max_calib_range": "3.413943", 
-        "min_calib_range": "-2.128984", 
+        "max_calib_range": "4.085062", 
+        "min_calib_range": "-2.841470", 
         "no_bias": "False", 
         "num_filter": "1024", 
         "out_type": "int8", 
@@ -1447,7 +1449,7 @@
       "name": "quantized_stage3_unit1_conv3", 
       "attrs": {
         "kernel": "(1, 1)", 
-        "max_calib_range": "3.433112", 
+        "max_calib_range": "4.532384", 
         "min_calib_range": "-0.000000", 
         "no_bias": "False", 
         "num_filter": "1024", 
@@ -1508,7 +1510,7 @@
       "name": "quantized_stage3_unit2_conv1", 
       "attrs": {
         "kernel": "(1, 1)", 
-        "max_calib_range": "2.369227", 
+        "max_calib_range": "2.415836", 
         "min_calib_range": "-0.000000", 
         "no_bias": "False", 
         "num_filter": "256", 
@@ -1556,7 +1558,7 @@
       "name": "quantized_stage3_unit2_conv2", 
       "attrs": {
         "kernel": "(3, 3)", 
-        "max_calib_range": "2.537469", 
+        "max_calib_range": "2.602205", 
         "min_calib_range": "-0.000000", 
         "no_bias": "False", 
         "num_filter": "256", 
@@ -1603,7 +1605,7 @@
       "name": "quantized_stage3_unit2_conv3", 
       "attrs": {
         "kernel": "(1, 1)", 
-        "max_calib_range": "3.936378", 
+        "max_calib_range": "4.882756", 
         "min_calib_range": "-0.000000", 
         "no_bias": "False", 
         "num_filter": "1024", 
@@ -1665,7 +1667,7 @@
       "name": "quantized_stage3_unit3_conv1", 
       "attrs": {
         "kernel": "(1, 1)", 
-        "max_calib_range": "2.550324", 
+        "max_calib_range": "2.997106", 
         "min_calib_range": "-0.000000", 
         "no_bias": "False", 
         "num_filter": "256", 
@@ -1713,7 +1715,7 @@
       "name": "quantized_stage3_unit3_conv2", 
       "attrs": {
         "kernel": "(3, 3)", 
-        "max_calib_range": "3.169765", 
+        "max_calib_range": "4.421042", 
         "min_calib_range": "-0.000000", 
         "no_bias": "False", 
         "num_filter": "256", 
@@ -1760,7 +1762,7 @@
       "name": "quantized_stage3_unit3_conv3", 
       "attrs": {
         "kernel": "(1, 1)", 
-        "max_calib_range": "3.901070", 
+        "max_calib_range": "4.641984", 
         "min_calib_range": "-0.000000", 
         "no_bias": "False", 
         "num_filter": "1024", 
@@ -1822,7 +1824,7 @@
       "name": "quantized_stage3_unit4_conv1", 
       "attrs": {
         "kernel": "(1, 1)", 
-        "max_calib_range": "3.444409", 
+        "max_calib_range": "3.362284", 
         "min_calib_range": "-0.000000", 
         "no_bias": "False", 
         "num_filter": "256", 
@@ -1870,7 +1872,7 @@
       "name": "quantized_stage3_unit4_conv2", 
       "attrs": {
         "kernel": "(3, 3)", 
-        "max_calib_range": "2.244574", 
+        "max_calib_range": "2.507228", 
         "min_calib_range": "-0.000000", 
         "no_bias": "False", 
         "num_filter": "256", 
@@ -1917,7 +1919,7 @@
       "name": "quantized_stage3_unit4_conv3", 
       "attrs": {
         "kernel": "(1, 1)", 
-        "max_calib_range": "3.622603", 
+        "max_calib_range": "4.881258", 
         "min_calib_range": "-0.000000", 
         "no_bias": "False", 
         "num_filter": "1024", 
@@ -1979,7 +1981,7 @@
       "name": "quantized_stage3_unit5_conv1", 
       "attrs": {
         "kernel": "(1, 1)", 
-        "max_calib_range": "4.244821", 
+        "max_calib_range": "4.748801", 
         "min_calib_range": "-0.000000", 
         "no_bias": "False", 
         "num_filter": "256", 
@@ -2027,7 +2029,7 @@
       "name": "quantized_stage3_unit5_conv2", 
       "attrs": {
         "kernel": "(3, 3)", 
-        "max_calib_range": "2.048666", 
+        "max_calib_range": "2.256845", 
         "min_calib_range": "-0.000000", 
         "no_bias": "False", 
         "num_filter": "256", 
@@ -2074,7 +2076,7 @@
       "name": "quantized_stage3_unit5_conv3", 
       "attrs": {
         "kernel": "(1, 1)", 
-        "max_calib_range": "4.705874", 
+        "max_calib_range": "4.929144", 
         "min_calib_range": "-0.000000", 
         "no_bias": "False", 
         "num_filter": "1024", 
@@ -2136,7 +2138,7 @@
       "name": "quantized_stage3_unit6_conv1", 
       "attrs": {
         "kernel": "(1, 1)", 
-        "max_calib_range": "5.807271", 
+        "max_calib_range": "6.438143", 
         "min_calib_range": "-0.000000", 
         "no_bias": "False", 
         "num_filter": "256", 
@@ -2184,7 +2186,7 @@
       "name": "quantized_stage3_unit6_conv2", 
       "attrs": {
         "kernel": "(3, 3)", 
-        "max_calib_range": "2.685346", 
+        "max_calib_range": "2.326437", 
         "min_calib_range": "-0.000000", 
         "no_bias": "False", 
         "num_filter": "256", 
@@ -2242,13 +2244,14 @@
       "name": "quantized_stage3_unit6_conv3", 
       "attrs": {
         "kernel": "(1, 1)", 
-        "max_calib_range": "5.867654", 
+        "max_calib_range": "8.454491", 
         "min_calib_range": "-0.000000", 
         "no_bias": "False", 
         "num_filter": "1024", 
         "out_type": "uint8", 
         "pad": "(0, 0)", 
         "stride": "(1, 1)", 
+        "with_convsumrelu_in": "True", 
         "with_postsum_relu": "True", 
         "with_sum": "True", 
         "workspace": "256"
@@ -2303,7 +2306,7 @@
       "name": "quantized_stage4_unit1_conv1", 
       "attrs": {
         "kernel": "(1, 1)", 
-        "max_calib_range": "3.116412", 
+        "max_calib_range": "3.688274", 
         "min_calib_range": "-0.000000", 
         "no_bias": "False", 
         "num_filter": "512", 
@@ -2351,7 +2354,7 @@
       "name": "quantized_stage4_unit1_conv2", 
       "attrs": {
         "kernel": "(3, 3)", 
-        "max_calib_range": "2.409733", 
+        "max_calib_range": "2.623812", 
         "min_calib_range": "-0.000000", 
         "no_bias": "False", 
         "num_filter": "512", 
@@ -2408,8 +2411,8 @@
       "name": "quantized_stage4_unit1_conv1sc", 
       "attrs": {
         "kernel": "(1, 1)", 
-        "max_calib_range": "2.801450", 
-        "min_calib_range": "-2.582051", 
+        "max_calib_range": "3.253714", 
+        "min_calib_range": "-2.939965", 
         "no_bias": "False", 
         "num_filter": "2048", 
         "out_type": "int8", 
@@ -2444,7 +2447,7 @@
       "name": "quantized_stage4_unit1_conv3", 
       "attrs": {
         "kernel": "(1, 1)", 
-        "max_calib_range": "3.610569", 
+        "max_calib_range": "3.482274", 
         "min_calib_range": "-0.000000", 
         "no_bias": "False", 
         "num_filter": "2048", 
@@ -2505,7 +2508,7 @@
       "name": "quantized_stage4_unit2_conv1", 
       "attrs": {
         "kernel": "(1, 1)", 
-        "max_calib_range": "4.672938", 
+        "max_calib_range": "3.297073", 
         "min_calib_range": "-0.000000", 
         "no_bias": "False", 
         "num_filter": "512", 
@@ -2553,7 +2556,7 @@
       "name": "quantized_stage4_unit2_conv2", 
       "attrs": {
         "kernel": "(3, 3)", 
-        "max_calib_range": "3.026892", 
+        "max_calib_range": "2.697052", 
         "min_calib_range": "-0.000000", 
         "no_bias": "False", 
         "num_filter": "512", 
@@ -2600,7 +2603,7 @@
       "name": "quantized_stage4_unit2_conv3", 
       "attrs": {
         "kernel": "(1, 1)", 
-        "max_calib_range": "4.789965", 
+        "max_calib_range": "5.321430", 
         "min_calib_range": "-0.000000", 
         "no_bias": "False", 
         "num_filter": "2048", 
@@ -2662,7 +2665,7 @@
       "name": "quantized_stage4_unit3_conv1", 
       "attrs": {
         "kernel": "(1, 1)", 
-        "max_calib_range": "4.382671", 
+        "max_calib_range": "3.890412", 
         "min_calib_range": "-0.000000", 
         "no_bias": "False", 
         "num_filter": "512", 
@@ -2710,7 +2713,7 @@
       "name": "quantized_stage4_unit3_conv2", 
       "attrs": {
         "kernel": "(3, 3)", 
-        "max_calib_range": "2.834636", 
+        "max_calib_range": "3.749788", 
         "min_calib_range": "-0.000000", 
         "no_bias": "False", 
         "num_filter": "512", 
@@ -2757,7 +2760,7 @@
       "name": "quantized_stage4_unit3_conv3", 
       "attrs": {
         "kernel": "(1, 1)", 
-        "max_calib_range": "49.851357", 
+        "max_calib_range": "58.845829", 
         "min_calib_range": "-0.000000", 
         "no_bias": "False", 
         "num_filter": "2048", 
