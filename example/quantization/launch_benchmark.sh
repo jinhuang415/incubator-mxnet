@@ -13,5 +13,5 @@ numactl --physcpubind=0-27 --membind=0 python imagenet_inference.py --symbol-fil
 ## Launch INT8 Real Inference
 
 export KMP_AFFINITY=granularity=fine,noduplicates,compact,1,0
-export OMP_NUM_THREADS=27
-numactl --physcpubind=0-27 --membind=0 python imagenet_inference.py --symbol-file=./model/imagenet1k-resnet-50-v1-quantized-5batches-naive-symbol.json --param-file=./model/imagenet1k-resnet-50-v1-quantized-0000.params --rgb-mean=123.68,116.779,103.939 --num-skipped-batches=50 --batch-size=64 --num-inference-batches=500 --dataset=./data/ILSVRC2012_img_val.rec --data-nthreads=1
+export OMP_NUM_THREADS=26
+numactl --physcpubind=0-27 --membind=0 python imagenet_inference.py --symbol-file=./model/imagenet1k-resnet-50-v1-quantized-5batches-naive-symbol.json --param-file=./model/imagenet1k-resnet-50-v1-quantized-0000.params --rgb-mean=123.68,116.779,103.939 --num-skipped-batches=50 --batch-size=64 --num-inference-batches=500 --dataset=./data/ILSVRC2012_img_val.rec --data-nthreads=2
