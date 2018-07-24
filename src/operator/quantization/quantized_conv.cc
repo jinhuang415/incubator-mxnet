@@ -67,9 +67,19 @@ bool QuantizedConvShape(const nnvm::NodeAttrs& attrs,
   SHAPE_ASSIGN_CHECK(*in_shape, 1, wshape);
   const int start = (param.no_bias? 2 : 3) + (param.with_sum? 1 : 0);
   const int end = (param.no_bias? 6 : 9) + (param.with_sum? 3 : 0);
+#ifdef DISABLE_CHANNEL_WISE_SCALING 
   for (int i = start; i < end; ++i) {
     SHAPE_ASSIGN_CHECK(*in_shape, i, TShape{1});
   }
+#else
+  SHAPE_ASSIGN_CHECK(*in_shape, start, TShape{1});
+  SHAPE_ASSIGN_CHECK(*in_shape, start+1, TShape{1});
+  SHAPE_ASSIGN_CHECK(*in_shape, start+2, Shape1(param.num_filter));
+  SHAPE_ASSIGN_CHECK(*in_shape, start+3, Shape1(param.num_filter));
+  for (int i = start+4; i < end; ++i) {
+    SHAPE_ASSIGN_CHECK(*in_shape, i, TShape{1});
+  }
+#endif
   if (!param.no_bias) {
     SHAPE_ASSIGN_CHECK(*in_shape, 2, Shape1(param.num_filter));
   }

@@ -145,6 +145,9 @@ def _quantize_params(qsym, params, th_in_dict={}):
         if name.endswith(('weight_quantize')):
             original_name = name[:-len('_quantize')]
             param = params[original_name]
+            """
+            # below is for tensor wise quantization, leave here to allow a 
+            # future option to switch tensor-wise and channel-wise
             val, vmin, vmax = ndarray.contrib.quantize(data=param,
                                                        min_range=ndarray.min(param),
                                                        max_range=ndarray.max(param),
@@ -152,8 +155,23 @@ def _quantize_params(qsym, params, th_in_dict={}):
             quantized_params[name] = val
             quantized_params[name+'_min'] = vmin
             quantized_params[name+'_max'] = vmax
-        elif name in params:
-            quantized_params[name] = params[name]
+            """
+            qweights = ndarray.zeros(param.shape, dtype='int8') 
+            w_min = ndarray.zeros(param.shape[0], dtype='float') 
+            w_max = ndarray.zeros(param.shape[0], dtype='float') 
+            for i in range(param.shape[0]):
+                param_oc = param[i,:]
+                val, vmin, vmax = ndarray.contrib.quantize(data=ndarray.expand_dims(param_oc, 0),
+                                                       min_range=ndarray.min(param_oc),
+                                                       max_range=ndarray.max(param_oc),
+                                                       out_type='int8')
+                qweights[i] = val
+                w_min[i] = vmin
+                w_max[i] = vmax
+
+            quantized_params[name] = qweights
+            quantized_params[name+'_min'] = w_min
+            quantized_params[name+'_max']  = w_max
     for name in th_in_dict:
         in_layer = th_in_dict[name][0]
         quantized_params[in_layer+'_min'] = ndarray.array([th_in_dict[name][1]])
@@ -175,8 +193,13 @@ def _quantize_params(qsym, params, th_in_dict={}):
             in_min = quantized_params[in_layer_min_name]
             in_max = quantized_params[in_layer_max_name]
             
+            bias_scale = 255.0 * 127.0 / ndarray.maximum(ndarray.abs(w_min), ndarray.abs(w_max)) \
+                           / max(abs(in_min.asscalar()), abs(in_max.asscalar()))
+            bias_scale = bias_scale.astype('float32')
+            """
             bias_scale = 255.0 * 127.0 / max(abs(w_min.asscalar()), abs(w_max.asscalar())) \
                            / max(abs(in_min.asscalar()), abs(in_max.asscalar()))
+            """
 
             param = params[original_name]
             val = ndarray.multiply(param, bias_scale).astype('int32')
