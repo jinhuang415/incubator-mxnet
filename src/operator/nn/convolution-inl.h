@@ -73,6 +73,7 @@ struct ConvolutionParam : public dmlc::Parameter<ConvolutionParam> {
   dmlc::optional<int> layout;
   bool with_relu;
   bool with_convsumrelu_in;
+  bool enable_chanwise_scale;
   // below 3 params are optional parameters to support INT8 quantization
   dmlc::optional<int> out_type;  // quantized conv output type
   dmlc::optional<float> min_calib_range;  // min float value calculated from calibration dataset
@@ -103,6 +104,8 @@ struct ConvolutionParam : public dmlc::Parameter<ConvolutionParam> {
     .describe("Whether to enable convsumrelu fusion.");
     DMLC_DECLARE_FIELD(with_convsumrelu_in).set_default(false)
     .describe("Whether previous OP is conv+sum+relu fusion OP.");
+    DMLC_DECLARE_FIELD(enable_chanwise_scale).set_default(false)
+    .describe("enable per-channel weights quantization or not");
     DMLC_DECLARE_FIELD(cudnn_tune)
     .add_enum("off", conv::kOff)
     .add_enum("limited_workspace", conv::kLimited)

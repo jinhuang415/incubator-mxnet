@@ -124,7 +124,7 @@ def _fuse_update_params(qsym, params, aux_params):
 #         print "aux_params name is ",k ," val are ", v
     return fused_params
 
-def _quantize_params(qsym, params, th_in_dict={}):
+def _quantize_params(qsym, params, th_in_dict={}, enable_chanwise_scale=False):
     """Given a quantized symbol and a dict of params that have not been quantized,
     generate quantized params. Currently only supports quantizing the arg_params
     with names of `weight` or `bias`, not aux_params. If `qsym` contains symbols
@@ -145,33 +145,31 @@ def _quantize_params(qsym, params, th_in_dict={}):
         if name.endswith(('weight_quantize')):
             original_name = name[:-len('_quantize')]
             param = params[original_name]
-            """
-            # below is for tensor wise quantization, leave here to allow a 
-            # future option to switch tensor-wise and channel-wise
-            val, vmin, vmax = ndarray.contrib.quantize(data=param,
-                                                       min_range=ndarray.min(param),
-                                                       max_range=ndarray.max(param),
-                                                       out_type='int8')
-            quantized_params[name] = val
-            quantized_params[name+'_min'] = vmin
-            quantized_params[name+'_max'] = vmax
-            """
-            qweights = ndarray.zeros(param.shape, dtype='int8') 
-            w_min = ndarray.zeros(param.shape[0], dtype='float') 
-            w_max = ndarray.zeros(param.shape[0], dtype='float') 
-            for i in range(param.shape[0]):
-                param_oc = param[i,:]
-                val, vmin, vmax = ndarray.contrib.quantize(data=ndarray.expand_dims(param_oc, 0),
-                                                       min_range=ndarray.min(param_oc),
-                                                       max_range=ndarray.max(param_oc),
-                                                       out_type='int8')
-                qweights[i] = val
-                w_min[i] = vmin
-                w_max[i] = vmax
+            if not enable_chanwise_scale:
+                val, vmin, vmax = ndarray.contrib.quantize(data=param,
+                                                           min_range=ndarray.min(param),
+                                                           max_range=ndarray.max(param),
+                                                           out_type='int8')
+                quantized_params[name] = val
+                quantized_params[name+'_min'] = vmin
+                quantized_params[name+'_max'] = vmax
+            else:
+                qweights = ndarray.zeros(param.shape, dtype='int8')
+                w_min = ndarray.zeros(param.shape[0], dtype='float')
+                w_max = ndarray.zeros(param.shape[0], dtype='float')
+                for i in range(param.shape[0]):
+                    param_oc = param[i,:]
+                    val, vmin, vmax = ndarray.contrib.quantize(data=ndarray.expand_dims(param_oc, 0),
+                                                           min_range=ndarray.min(param_oc),
+                                                           max_range=ndarray.max(param_oc),
+                                                           out_type='int8')
+                    qweights[i] = val
+                    w_min[i] = vmin
+                    w_max[i] = vmax
 
-            quantized_params[name] = qweights
-            quantized_params[name+'_min'] = w_min
-            quantized_params[name+'_max']  = w_max
+                quantized_params[name] = qweights
+                quantized_params[name+'_min'] = w_min
+                quantized_params[name+'_max']  = w_max
     for name in th_in_dict:
         in_layer = th_in_dict[name][0]
         quantized_params[in_layer+'_min'] = ndarray.array([th_in_dict[name][1]])
@@ -222,7 +220,7 @@ def _fuse_symbol(sym):
 
 def _quantize_symbol(sym, excluded_symbols=None, offline_params=None,
                      quantized_dtype='int8', disable_requantize=False,
-                     input_calib_layers=None):
+                     input_calib_layers=None, enable_chanwise_scale=False):
     """Given a symbol object representing a neural network of data type FP32,
     quantize it into a INT8 network.
 
@@ -275,7 +273,8 @@ def _quantize_symbol(sym, excluded_symbols=None, offline_params=None,
                                      c_str(quantized_dtype),
                                      ctypes.c_bool(disable_requantize),
                                      mx_uint(num_input_calib),
-                                     c_array(ctypes.c_char_p, input_calib)))
+                                     c_array(ctypes.c_char_p, input_calib),
+                                     ctypes.c_bool(enable_chanwise_scale)))
     return Symbol(out)
 
 
@@ -670,7 +669,8 @@ def quantize_model(sym, arg_params, aux_params,
                    ctx=cpu(), excluded_sym_names=None, calib_mode='entropy',
                    calib_data=None, num_calib_examples=None, calib_layer=None,
                    quantized_dtype='int8', disable_requantize=False,
-                   input_calib_layer=None, logger=logging):
+                   input_calib_layer=None, enable_chanwise_scale=False,
+                   logger=logging):
     """User-level API for generating a quantized model from a FP32 model w/ or w/o calibration.
     The backend quantized operators are only enabled for Linux systems. Please do not run
     inference using the quantized models on Windows for now.
@@ -778,7 +778,8 @@ def quantize_model(sym, arg_params, aux_params,
                             offline_params=list(farg_params.keys()),
                             quantized_dtype=quantized_dtype,
                             disable_requantize=disable_requantize,
-                            input_calib_layers=input_calib_layers)
+                            input_calib_layers=input_calib_layers,
+                            enable_chanwise_scale=enable_chanwise_scale)
     
 
     if calib_mode is not None and calib_mode != 'none':
@@ -827,6 +828,7 @@ def quantize_model(sym, arg_params, aux_params,
         th_in_dict = {}
 
     logger.info('Quantizing parameters')
-    qarg_params = _quantize_params(qsym, farg_params, th_in_dict)
+    qarg_params = _quantize_params(qsym, farg_params, th_in_dict,
+                                   enable_chanwise_scale)
 
     return qsym, qarg_params, aux_params

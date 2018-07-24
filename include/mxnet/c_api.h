@@ -1448,7 +1448,8 @@ MXNET_DLL int MXQuantizeSymbol(SymbolHandle sym_handle,
                                const char *quantized_dtype,
                                const bool disable_requantize,
                                const mx_uint num_input_calib,
-                               const char **input_calib);
+                               const char **input_calib,
+                               const bool enable_chanwise_scale);
 
 /*!
  * \brief Set calibration table to node attributes in the sym

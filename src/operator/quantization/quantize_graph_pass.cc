@@ -102,6 +102,7 @@ Graph QuantizeGraph(Graph &&src) {
   auto quantized_dtype = src.GetAttr<std::string>("quantized_dtype");
   auto disable_requantize = src.GetAttr<bool>("disable_requantize");
   auto input_calib_layers = src.GetAttr<std::unordered_set<std::string>>("input_calib_layers");
+  auto enable_chanwise_scale = src.GetAttr<bool>("enable_chanwise_scale");
 
   // mirror_map stores the mapping from the currently visited graph to the newly created quantized
   // graph. Key is the currently visited graph's node pointer, and value is a copied node of the key
@@ -193,6 +194,8 @@ Graph QuantizeGraph(Graph &&src) {
       // out_data, min_range, and max_range.
       if (need_requantize_map.count(new_node->op()) > 0
           && need_requantize_map[new_node->op()](new_node->attrs)) {
+        new_node->attrs.dict["enable_chanwise_scale"]
+                                   = enable_chanwise_scale ? "True" : "False";
         if (disable_requantize) {
           if (new_node->attrs.dict.count("with_relu") 
               || new_node->attrs.dict.count("with_postsum_relu")) {

@@ -106,6 +106,9 @@ if __name__ == '__main__':
                         help='If enabled, the input data of calib layer will '
                              'be calibrated offline if calibration mode is '
                              'enabled')
+    parser.add_argument('--enable-chanwise-scale', type=bool, default=False,
+                        help='If enabled, the weight quantization will be '
+                             'performend per-channel instead of per-tensor')
 
     args = parser.parse_args()
 
@@ -127,6 +130,13 @@ if __name__ == '__main__':
 
     if args.enable_input_calib and args.calib_mode == 'none':
         raise ValueError('enable-input-calib need to run with calibration mode')
+
+    if args.enable_chanwise_scale and args.calib_mode == 'none':
+        raise ValueError('channel-wise weight scale need to run with calibration mode')
+
+    if args.enable_chanwise_scale and not args.disable_requantize:
+        raise ValueError('channel-wise weight scale need to run with '
+                         'disable-requantize mode for now')
 
     logging.basicConfig()
     logger = logging.getLogger('logger')
@@ -247,6 +257,7 @@ if __name__ == '__main__':
                                                        ctx=ctx, excluded_sym_names=excluded_sym_names,
                                                        calib_mode=calib_mode, quantized_dtype=args.quantized_dtype,
                                                        disable_requantize=args.disable_requantize,
+                                                       enable_chanwise_scale=args.enable_chanwise_scale,
                                                        logger=logger)
         sym_name = '%s-symbol.json' % (prefix + '-quantized')
         save_symbol(sym_name, qsym, logger)
@@ -272,6 +283,7 @@ if __name__ == '__main__':
                                                         calib_layer=calib_layer, quantized_dtype=args.quantized_dtype,
                                                         disable_requantize=args.disable_requantize,
                                                         input_calib_layer=input_calib_layer,
+                                                        enable_chanwise_scale=args.enable_chanwise_scale,
                                                         label_names=(label_name,),
                                                         logger=logger)
         if calib_mode == 'entropy':
