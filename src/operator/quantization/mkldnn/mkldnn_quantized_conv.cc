@@ -45,21 +45,25 @@ static void MKLDNNQuantizedConvForward(const nnvm::NodeAttrs& attrs,
   const ConvolutionParam& param = nnvm::get<ConvolutionParam>(attrs.parsed);
   const size_t num_inputs = (param.no_bias ? 2 : 3) + (param.with_sum ? 1 : 0);
 
-  float data_range, weight_range, out_range;
+  float data_range, out_range;
   float quantized_data_range, quantized_weight_range, quantized_out_range;
   float quantized_sum_in_range;
-  float data_scale, weight_scale, out_scale, sum_in_scale;
-  float conv_scale = MKLDNNConvForward::NO_SCALE;
+  float data_scale, out_scale, sum_in_scale;
+  std::vector<float> conv_scale, weight_range, weight_scale;
   float postsum_scale = 1.0f;
+  CHECK(in_data[num_inputs+2].shape().Size() == in_data[num_inputs+3].shape().Size())
+    << "weights min array size doesn't match max array size";
   if (param.min_calib_range.has_value() && param.max_calib_range.has_value()) {
+    const int32_t weight_cnt = in_data[num_inputs+2].shape().Size(); 
+    conv_scale.resize(weight_cnt);
+    weight_range.resize(weight_cnt);
+    weight_scale.resize(weight_cnt);
     using red::limits::MaxValue;
     using red::limits::MinValue;
     data_range = MaxAbs(*in_data[num_inputs].data().dptr<float>(),
                         *in_data[num_inputs+1].data().dptr<float>());
     out_range =
         MaxAbs(param.min_calib_range.value(), param.max_calib_range.value());
-    weight_range = MaxAbs(*in_data[num_inputs+2].data().dptr<float>(),
-                          *in_data[num_inputs+3].data().dptr<float>());
     quantized_data_range = MaxAbs(MaxValue<uint8_t>(), MinValue<uint8_t>());
     quantized_weight_range = MinAbs(MaxValue<int8_t>(), MinValue<int8_t>());
     // for conv+sum+relu fusion case, we will set the out data type to int8 in
@@ -73,9 +77,13 @@ static void MKLDNNQuantizedConvForward(const nnvm::NodeAttrs& attrs,
       quantized_out_range = MaxAbs(MaxValue<uint8_t>(), MinValue<uint8_t>());
     }
     data_scale = quantized_data_range / data_range;
-    weight_scale = quantized_weight_range / weight_range;
     out_scale = quantized_out_range / out_range;
-    conv_scale = out_scale / data_scale / weight_scale;
+    for (int i = 0; i < weight_cnt; i++) {
+      weight_range[i] = MaxAbs(*(in_data[num_inputs+2].data().dptr<float>()+i),
+                               *(in_data[num_inputs+3].data().dptr<float>()+i));
+      weight_scale[i] = quantized_weight_range / weight_range[i];
+      conv_scale[i] = out_scale / data_scale / weight_scale[i];
+    }
 
     if (param.with_sum) {
       float sum_in_range;
@@ -99,7 +107,8 @@ static void MKLDNNQuantizedConvForward(const nnvm::NodeAttrs& attrs,
   MKLDNNConvForward &fwd = GetConvFwd(attrs, ctx.is_train,
       in_data[conv::kData], weight,
       param.no_bias ? nullptr : &in_data[conv::kBias], out_data[conv::kOut],
-      conv_scale, postsum_scale);
+      conv_scale.size() > 0 ? conv_scale.data() : nullptr, conv_scale.size(),
+      postsum_scale);
 
   const mkldnn::memory *data_mem = nullptr;
   // If input is int8 and previous OP is conv+sum+relu fusion OP, then treat

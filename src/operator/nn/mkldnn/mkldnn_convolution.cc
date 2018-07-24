@@ -43,7 +43,7 @@ bool SupportMKLDNNConv(const ConvolutionParam& params, const NDArray &input) {
 mkldnn::convolution_forward::primitive_desc GetConvFwdImpl(
     const ConvolutionParam& param, const bool is_train, const NDArray &data,
     const NDArray &weights, const NDArray *bias, const NDArray &output,
-    const float scale, const float sum_scale) {
+    const float *scale_array, const int32_t scale_count, const float sum_scale) {
   auto prop = is_train ? mkldnn::prop_kind::forward_training : mkldnn::prop_kind::forward_scoring;
   auto data_md = GetInDataMemDesc(data);
   auto weight_md = GetWeightDesc(weights, param.num_group);
@@ -59,9 +59,16 @@ mkldnn::convolution_forward::primitive_desc GetConvFwdImpl(
   padding[0] = param.pad[0];
   padding[1] = param.pad[1];
   mkldnn::primitive_attr attr;
-  if (scale != MKLDNNConvForward::NO_SCALE) {
+  if (scale_array != nullptr) {
     int mask = 0;
-    std::vector<float> scales = {scale};
+    if (scale_count > 1) {
+      int oc_dim_id = 1;
+      mask = 1 << oc_dim_id;
+    }
+    std::vector<float> scales(scale_count);
+    for (int i = 0; i < scale_count; i++) {
+      scales[i] = scale_array[i];
+    }
     attr.set_output_scales(mask, scales);
     attr.set_int_output_round_mode(round_nearest);
   }
@@ -86,8 +93,7 @@ mkldnn::convolution_forward::primitive_desc GetConvFwdImpl(
   if (param.dilate.ndim() == 0 && bias == nullptr) {
     mkldnn::convolution_forward::desc desc(prop, mkldnn::algorithm::convolution_direct,
         data_md, weight_md, out_md, strides, padding, padding, mkldnn::padding_kind::zero);
-    if (scale != MKLDNNConvForward::NO_SCALE || param.with_relu ||
-            param.with_sum || param.with_postsum_relu) {
+    if (scale_array != nullptr || param.with_relu || param.with_sum || param.with_postsum_relu) {
       return mkldnn::convolution_forward::primitive_desc(desc, attr, engine);
     } else {
       return mkldnn::convolution_forward::primitive_desc(desc, engine);
@@ -97,8 +103,7 @@ mkldnn::convolution_forward::primitive_desc GetConvFwdImpl(
     mkldnn::convolution_forward::desc desc(prop, mkldnn::algorithm::convolution_direct,
         data_md, weight_md, bias_md, out_md, strides, padding, padding,
         mkldnn::padding_kind::zero);
-    if (scale != MKLDNNConvForward::NO_SCALE || param.with_relu ||
-            param.with_sum || param.with_postsum_relu) {
+    if (scale_array != nullptr || param.with_relu || param.with_sum || param.with_postsum_relu) {
       return mkldnn::convolution_forward::primitive_desc(desc, attr, engine);
     } else {
       return mkldnn::convolution_forward::primitive_desc(desc, engine);
@@ -111,8 +116,7 @@ mkldnn::convolution_forward::primitive_desc GetConvFwdImpl(
       mkldnn::convolution_forward::desc desc(prop, mkldnn::algorithm::convolution_direct,
           data_md, weight_md, out_md, strides, dilates, padding, padding,
           mkldnn::padding_kind::zero);
-      if (scale != MKLDNNConvForward::NO_SCALE || param.with_relu ||
-              param.with_sum || param.with_postsum_relu) {
+      if (scale_array != nullptr || param.with_relu || param.with_sum || param.with_postsum_relu) {
         return mkldnn::convolution_forward::primitive_desc(desc, attr, engine);
       } else {
         return mkldnn::convolution_forward::primitive_desc(desc, engine);
@@ -123,8 +127,7 @@ mkldnn::convolution_forward::primitive_desc GetConvFwdImpl(
                                              data_md, weight_md, bias_md, out_md, strides,
                                              dilates, padding, padding,
                                              mkldnn::padding_kind::zero);
-      if (scale != MKLDNNConvForward::NO_SCALE || param.with_relu ||
-              param.with_sum || param.with_postsum_relu) {
+      if (scale_array != nullptr || param.with_relu || param.with_sum || param.with_postsum_relu) {
         return mkldnn::convolution_forward::primitive_desc(desc, attr, engine);
       } else {
         return mkldnn::convolution_forward::primitive_desc(desc, engine);
@@ -256,7 +259,8 @@ void MKLDNNConvForward::SetNewMem(const mkldnn::memory &data,
 MKLDNNConvForward &GetConvFwd(const nnvm::NodeAttrs& attrs, const bool is_train,
                               const NDArray &data, const NDArray &weights,
                               const NDArray *bias, const NDArray &output,
-                              const float scale, const float sum_scale) {
+                              const float *scale_array, const int32_t scale_count,
+                              const float sum_scale) {
 #if DMLC_CXX11_THREAD_LOCAL
   static thread_local std::unordered_map<MKLDNNConvSignature, MKLDNNConvForward, OpHash> fwds;
 #else
@@ -273,14 +277,16 @@ MKLDNNConvForward &GetConvFwd(const nnvm::NodeAttrs& attrs, const bool is_train,
   key.AddSign(output);
   if (bias)
     key.AddSign(*bias);
-  if (scale != MKLDNNConvForward::NO_SCALE)
-    key.AddSign(scale);
+  if (scale_array != nullptr)
+    for (int i = 0; i < scale_count; i++)
+      key.AddSign(scale_array[i]);
   if (sum_scale != MKLDNNConvForward::NO_SCALE)
     key.AddSign(sum_scale);
 
   auto it = fwds.find(key);
   if (it == fwds.end()) {
-    MKLDNNConvForward fwd(param, is_train, data, weights, bias, output, scale, sum_scale);
+    MKLDNNConvForward fwd(param, is_train, data, weights, bias, output,
+                          scale_array, scale_count, sum_scale);
     auto ins_ret = fwds.insert(
         std::pair<MKLDNNConvSignature, MKLDNNConvForward>(key, fwd));
     CHECK(ins_ret.second);
@@ -298,7 +304,7 @@ void MKLDNNConvolutionForward(const nnvm::NodeAttrs& attrs, const OpContext &ctx
   NDArray weight = in_data[conv::kWeight];
   MKLDNNConvForward &fwd = GetConvFwd(attrs, ctx.is_train, in_data[conv::kData], weight,
       param.no_bias ? nullptr : &in_data[conv::kBias], out_data[conv::kOut],
-      MKLDNNConvForward::NO_SCALE, param.with_sum ? 1.0: MKLDNNConvForward::NO_SCALE);
+      nullptr, 0, param.with_sum ? 1.0: MKLDNNConvForward::NO_SCALE);
 
   auto data_mem = in_data[conv::kData].GetMKLDNNDataReorder(fwd.fwd_pd.src_primitive_desc());
   const mkldnn::memory *weight_mem;
@@ -352,7 +358,7 @@ void MKLDNNConvolutionBackward(const nnvm::NodeAttrs& attrs, const OpContext &ct
   mkldnn::convolution_forward::primitive_desc fwd_pd = GetConvFwdImpl(param, ctx.is_train,
       inputs[conv::kData + 1], inputs[conv::kWeight + 1],
       param.no_bias ? nullptr : &inputs[conv::kBias + 1], inputs[conv::kOut],
-      MKLDNNConvForward::NO_SCALE, 1.0f);
+      nullptr, 0, 1.0f);
 
   CHECK_NE(req[conv::kWeight], kWriteInplace) << "cannot write weight inplace";
   mkldnn::convolution_backward_data::primitive_desc bwdData_pd
