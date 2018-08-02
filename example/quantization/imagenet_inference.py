@@ -134,7 +134,7 @@ if __name__ == '__main__':
     parser.add_argument('--image-shape', type=str, default='3,224,224')
     parser.add_argument('--data-nthreads', type=int, default=60, help='number of threads for data decoding')
     parser.add_argument('--num-skipped-batches', type=int, default=0, help='skip the number of batches for inference')
-    parser.add_argument('--num-inference-batches', type=int, required=True, help='number of images used for inference')
+    parser.add_argument('--num-inference-batches', type=int, required=False, help='number of images used for inference')
     parser.add_argument('--shuffle-dataset', action='store_true', default=True,
                         help='shuffle the calibration dataset')
     parser.add_argument('--shuffle-chunk-seed', type=int, default=3982304,
@@ -207,7 +207,11 @@ if __name__ == '__main__':
         logger.info('Skipping the first %d batches' % args.num_skipped_batches)
         data = advance_data_iter(data, args.num_skipped_batches)
 
-        num_inference_images = args.num_inference_batches * batch_size
+        if args.num_inference_batches:
+            num_inference_batches = args.num_inference_batches
+        else:
+            num_inference_batches = 25600 / batch_size
+        num_inference_images = num_inference_batches * batch_size
         logger.info('Running model %s for inference' % symbol_file)
         score(sym, arg_params, aux_params, data, [ctx], label_name,
             max_num_examples=num_inference_images, logger=logger)
